@@ -30,7 +30,6 @@
 #include <string>
 #include <vector>
 #include <iostream>
-#include "trafficmanager.hpp"
 
 /*all declared in main.cpp*/
 
@@ -50,7 +49,7 @@ extern int gNodes;
 extern bool gTrace;
 
 extern std::ostream * gWatchOut;
-extern TrafficManager *trafficManager;
+extern class TrafficManager *trafficManager;
 
 
 #endif

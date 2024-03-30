@@ -83,8 +83,8 @@ namespace RandomGenerator {
 
     class ExponentialDistribution{
     public:
-        ExponentialDistribution(){
-
+        ExponentialDistribution(std::exponential_distribution<double>* dist){
+            this->dist = dist;
         }
 
         ExponentialDistribution(double lambda){
@@ -103,8 +103,8 @@ namespace RandomGenerator {
 
     class PoissonDistribution{
     public:
-        PoissonDistribution(){
-
+        PoissonDistribution(std::poisson_distribution<int>* dist){
+            this->dist = dist;
         }
 
         PoissonDistribution(double lambda){
@@ -166,7 +166,7 @@ namespace RandomGenerator {
         double Generate(){
             std::uniform_real_distribution<double> dist = std::uniform_real_distribution<double>(0, 1);
             double prob = dist(mt_rng);
-            for(auto it = cdf.begin(); it != cdf.end(); ++it){
+            for(std::map<int, double>::iterator it = cdf.begin(); it != cdf.end(); ++it){
                 if(prob <= it->second){
                     return it->first;
                 }
@@ -199,7 +199,6 @@ namespace RandomGenerator {
         }
     private:
         std::map<int, int> distribution;
-        std::discrete_distribution<double>* dist;
         std::map<int, double> cdf;
         std::map<int, double> pdf;
     };

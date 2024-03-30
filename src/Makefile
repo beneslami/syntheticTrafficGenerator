@@ -23,16 +23,15 @@
 # CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
 # ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 # POSSIBILITY OF SUCH DAMAGE.
-
 LEX = flex
 YACC   = bison -y
-DEFINE = 
-INCPATH = -I. -Iarbiters -Iallocators -Irouters -Inetworks -Ipower
+LEVEL ?= default
+DEFINE =
+INCPATH = -I. -Iarbiters -Iallocators -Irouters -Inetworks -Ipower -I$(LEVEL)
 CPPFLAGS += -Wall $(INCPATH) $(DEFINE)
 CPPFLAGS += -O3
-CPPFLAGS += -g -lstdc++fs -std=c++11
-LFLAGS +=
-LEVEL ?= default
+CPPFLAGS += -g -stdlib=libc++
+LFLAGS += -stdlib=libc++
 
 PROG := booksim
 

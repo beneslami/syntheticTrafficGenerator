@@ -80,7 +80,7 @@ void Multi_GPU::init(BookSimConfig const & config){
     this->_round_robin_turn.resize(trafficManager->get_num_subnets());
     this->_ejected_flit_queue.resize(trafficManager->get_num_subnets());
 
-    for(int i = 0 ; i < trafficManager->_subnets; i++){
+    for(int i = 0 ; i < trafficManager->get_num_subnets(); i++){
         this->_boundary_buffer[i].resize(trafficManager->get_num_nodes());
         this->_round_robin_turn[i].resize(trafficManager->get_num_nodes());
         this->_ejected_flit_queue[i].resize(trafficManager->get_num_nodes());
