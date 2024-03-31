@@ -30,8 +30,8 @@ DEFINE =
 INCPATH = -I. -Iarbiters -Iallocators -Irouters -Inetworks -Ipower -I$(LEVEL)
 CPPFLAGS += -Wall $(INCPATH) $(DEFINE)
 CPPFLAGS += -O3
-CPPFLAGS += -g -stdlib=libc++
-LFLAGS += -stdlib=libc++
+CPPFLAGS += -g
+LFLAGS +=
 
 PROG := booksim
 

@@ -285,7 +285,7 @@ protected:
 
     virtual int _IssuePacket(int source, int cl);
 
-    void _GeneratePacket(int source, int size, int cl, int time);
+    void _GeneratePacket(int source, int size, int destination, Flit::FlitType, int subnet, int cl, int time, void* const data );
 
     virtual void _ClearStats();
 

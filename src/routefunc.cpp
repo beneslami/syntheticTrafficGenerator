@@ -1552,7 +1552,7 @@ void dim_order_torus( const Router *r, const Flit *f, int in_channel,
     if(cur != dest) {
 
       int const available_vcs = (vcEnd - vcBegin + 1) / 2;
-      assert(available_vcs > 0);
+      assert(available_vcs >= 0);
 
       if ( f->ph == 0 ) {
 	vcEnd -= available_vcs;

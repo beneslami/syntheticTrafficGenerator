@@ -75,25 +75,28 @@ double Multi_GPU::get_frequnecy_ratio(){
 }
 
 void Multi_GPU::init(BookSimConfig const & config){
-    this->_ejection_buffer.resize(trafficManager->get_num_subnets());
-    this->_boundary_buffer.resize(trafficManager->get_num_subnets());
-    this->_round_robin_turn.resize(trafficManager->get_num_subnets());
-    this->_ejected_flit_queue.resize(trafficManager->get_num_subnets());
+    this->subnet = config.GetInt("subnets");
+    this->nodes = pow(config.GetInt("k"), config.GetInt("n"));
+    this->vcs = config.GetInt("num_vcs");
+    this->_ejection_buffer.resize(subnet);
+    this->_boundary_buffer.resize(subnet);
+    this->_round_robin_turn.resize(subnet);
+    this->_ejected_flit_queue.resize(subnet);
 
-    for(int i = 0 ; i < trafficManager->get_num_subnets(); i++){
-        this->_boundary_buffer[i].resize(trafficManager->get_num_nodes());
-        this->_round_robin_turn[i].resize(trafficManager->get_num_nodes());
-        this->_ejected_flit_queue[i].resize(trafficManager->get_num_nodes());
-        this->_ejection_buffer[i].resize(trafficManager->get_num_nodes());
+    for(int i = 0 ; i < subnet; i++){
+        this->_boundary_buffer[i].resize(nodes);
+        this->_round_robin_turn[i].resize(nodes);
+        this->_ejected_flit_queue[i].resize(nodes);
+        this->_ejection_buffer[i].resize(nodes);
     }
 
-    for(int i = 0 ; i < trafficManager->get_num_subnets(); i++) {
-        for (int j = 0; j < trafficManager->get_num_nodes(); j++) {
-            this->_boundary_buffer[i][j].resize(trafficManager->get_num_vcs());
-            this->_ejection_buffer[i][j].resize(trafficManager->get_num_vcs());
+    for(int i = 0 ; i < subnet; i++) {
+        for (int j = 0; j < nodes; j++) {
+            this->_boundary_buffer[i][j].resize(vcs);
+            this->_ejection_buffer[i][j].resize(vcs);
         }
     }
-    _pending_reply.resize(trafficManager->get_num_nodes());
+    _pending_reply.resize(nodes);
     this->pending_reply_capacity = config.GetInt("pending_buffer_size");
     this->ejection_buffer_capacity = config.GetInt("ejection_buffer_size");
     this->boundary_buffer_capacity = config.GetInt("boundary_buffer_size");
@@ -101,6 +104,7 @@ void Multi_GPU::init(BookSimConfig const & config){
     this->input_buffer_capacity = config.GetInt("input_buffer_size");
     reinit_clock_domains();
     init_clock_domains();
+    this->gpu_cycle = 0;
 }
 
 void Multi_GPU::init_clock_domains() {
@@ -149,4 +153,212 @@ int Multi_GPU::next_clock_domain() {
         core_time += core_period;
     }
     return mask;
+}
+
+int Multi_GPU::get_gpu_cycle() {
+    return this->gpu_cycle;
+}
+
+bool Multi_GPU::pending_reply_isFull(int chiplet){
+    return (_pending_reply[chiplet].size() + 1 <= pending_reply_capacity) ? 0 : 1;
+}
+
+bool Multi_GPU::pending_reply_isEmpty(int chiplet){
+    return (_pending_reply[chiplet].size() != 0) ? 0 : 1;
+}
+
+bool Multi_GPU::boundary_buffer_isEmpty(int subnet, int chiplet){
+    int turn = _round_robin_turn[subnet][chiplet];
+    return (_boundary_buffer[subnet][chiplet][turn].Size() != 0) ? 0 : 1;
+}
+
+bool Multi_GPU::boundary_buffer_isFull(int subnet, int chiplet){
+    int turn = _round_robin_turn[subnet][chiplet];
+    return (_boundary_buffer[subnet][chiplet][turn].Size() + 1 <= boundary_buffer_capacity) ? 0 : 1;
+}
+
+void Multi_GPU::WriteOutBuffer(int subnet, int dest, Flit* f) {
+    int vc = f->vc;
+    assert(_ejection_buffer[subnet][dest][vc].size() < ejection_buffer_capacity);
+    _ejection_buffer[subnet][dest][vc].push(f);
+}
+
+void Multi_GPU::boundaryBufferTransfer(int subnet, int chiplet) {
+    for(int vc = 0; vc < this->vcs; vc++) {
+        if (!_ejection_buffer[subnet][chiplet][vc].empty() && _boundary_buffer[subnet][chiplet][vc].Size() < boundary_buffer_capacity) {
+            Flit *f = _ejection_buffer[subnet][chiplet][vc].front();
+            assert(f);
+            _ejection_buffer[subnet][chiplet][vc].pop();
+            _boundary_buffer[subnet][chiplet][vc].PushFlitData(f->data, f->tail);
+            _ejected_flit_queue[subnet][chiplet].push(f); // for flow control
+            if (f->head) {
+                assert(f->dest == chiplet);
+            }
+        }
+    }
+}
+
+void Multi_GPU::process_request(int input, mem_fetch *mf) {
+    //TODO:
+}
+
+void Multi_GPU::set_Pending_Reply_capacity(int capacity){
+    pending_reply_capacity = capacity;
+}
+
+void Multi_GPU::set_boundary_buffer_capacity(int chiplet){
+    boundary_buffer_capacity = chiplet;
+}
+
+void Multi_GPU::pending_reply_push(int chiplet, mem_fetch *mf) {
+    assert(_pending_reply[chiplet].size() < pending_reply_capacity);
+    _pending_reply[chiplet].push(mf);
+}
+
+void Multi_GPU::pending_reply_pop(int chiplet){
+    assert(_pending_reply[chiplet].size() > 0);
+    _pending_reply[chiplet].pop();
+}
+
+mem_fetch* Multi_GPU::pending_reply_front(int chiplet){
+    assert(_pending_reply[chiplet].size() > 0);
+    return _pending_reply[chiplet].front();
+}
+
+void Multi_GPU::icnt_push(int src, int dest, mem_fetch *mf){
+    int subnet = 0;
+    if(mf->type == Flit::READ_REQUEST || mf->type == Flit::WRITE_REQUEST){
+        subnet = 0;
+    } else{
+        subnet = 1;
+    }
+    trafficManager->_GeneratePacket(src, mf->size, dest, mf->type, subnet, 0, GetSimTime(), (void *) mf);
+}
+
+mem_fetch* Multi_GPU::icnt_pop(int subnet, int chiplet){
+    mem_fetch *mf = NULL;
+    int turn = _round_robin_turn[subnet][chiplet];
+    for(int vc = 0; vc < this->vcs && (mf == NULL); vc++) {
+        if (_boundary_buffer[subnet][chiplet][turn].HasPacket()) {
+            mf = static_cast<mem_fetch *>(_boundary_buffer[subnet][chiplet][turn].PopPacket());
+            mf->timestamp = gpu_cycle;
+            assert(mf);
+        }
+        turn++;
+        if (turn == this->vcs) {
+            turn = 0;
+        }
+    }
+    if (mf) {
+        _round_robin_turn[subnet][chiplet] = turn;
+    }
+    return mf;
+}
+
+Flit* Multi_GPU::GetEjectedFlit(int subnet, int node){
+    Flit* flit = NULL;
+    if (!_ejected_flit_queue[subnet][node].empty()) {
+        flit = _ejected_flit_queue[subnet][node].front();
+        _ejected_flit_queue[subnet][node].pop();
+    }
+    return flit;
+}
+
+void Multi_GPU::processing_queue_pop(int chiplet){
+    //TODO:
+}
+
+int Multi_GPU::get_received_queue_occupancy(int subnet, int node){
+    int occupancy = 0;
+    for(int vc = 0; vc < this->vcs; vc++){
+        occupancy += _boundary_buffer[subnet][node][vc].Size();
+    }
+    return occupancy;
+}
+
+void Multi_GPU::_BoundaryBufferItem::PushFlitData(void* data,bool is_tail)
+{
+    _buffer.push(data);
+    _tail_flag.push(is_tail);
+    if (is_tail) {
+        _packet_n++;
+    }
+}
+
+void* Multi_GPU::_BoundaryBufferItem::TopPacket() const{
+    assert (_packet_n);
+    void* data = NULL;
+    void* temp_d = _buffer.front();
+    while (data==NULL) {
+        if (_tail_flag.front()) {
+            data = _buffer.front();
+        }
+        assert(temp_d == _buffer.front()); //all flits must belong to the same packet
+    }
+    return data;
+}
+
+void* Multi_GPU::_BoundaryBufferItem::PopPacket(){
+    assert (_packet_n);
+    void * data = NULL;
+    void * flit_data = _buffer.front();
+    while (data == NULL) {
+        assert(flit_data == _buffer.front()); //all flits must belong to the same packet
+        if (_tail_flag.front()) {
+            data = _buffer.front();
+            _packet_n--;
+        }
+        _buffer.pop();
+        _tail_flag.pop();
+    }
+    return data;
+}
+
+bool Multi_GPU::drain_queues() {
+    return true;
+}
+
+void Multi_GPU::run(){
+    do{
+        int clock_mask = next_clock_domain();
+
+        if(clock_mask & ICNT_chLet){
+
+        }
+
+        if(clock_mask & CORE){
+            // pop from m_response_fifo. the packet is already in the chiplet
+        }
+
+        if(clock_mask & ICNT){
+            // local transactions from LLC to cluster
+        }
+
+        if(clock_mask & ICNT_chLet){
+            //TODO: Reply side
+        }
+
+        if(clock_mask & DRAM){
+            // DRAM transactions happen here
+        }
+
+        if(clock_mask & L2){
+            // pop remote request from the queue
+            for(int input = 0; input < this->nodes; input++){
+                //processing_queue_pop(input);
+            }
+        }
+
+        if(clock_mask & ICNT){
+            // internal interconnect
+        }
+
+        if(clock_mask & ICNT_chLet){
+            trafficManager->_Step();
+        }
+
+        if(clock_mask & CORE){
+            //TODO: request side
+        }
+    }while(this->gpu_cycle <= trafficModel->get_cycle());
 }

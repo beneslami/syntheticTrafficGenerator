@@ -50,6 +50,7 @@ extern bool gTrace;
 
 extern std::ostream * gWatchOut;
 extern class TrafficManager *trafficManager;
-
+extern class Traffic_Model *trafficModel;
+extern class Multi_GPU *multi_GPU;
 
 #endif

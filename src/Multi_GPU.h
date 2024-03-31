@@ -9,8 +9,18 @@
 #include <vector>
 #include <queue>
 #include <map>
+#include <cmath>
 #include "flit.hpp"
 #include "booksim_config.hpp"
+#include "trafficmanager.hpp"
+
+#if LEVEL == leve1
+#include "level1/Traffic_Model.h"
+#elif LEVEL == level2
+#include "level2/Traffic_Model.h"
+#elif LEVEL == level3
+#include "level3/Traffic_Model.h"
+#endif
 
 #define  CORE  0x01
 #define  L2    0x02
@@ -32,7 +42,7 @@ typedef struct mem_fetch{
     int interval;
 }mem_fetch;
 
-class Multi_GPU {
+class Multi_GPU{
 private:
     int gpu_cycle;
     double core_freq = 1132.0;
@@ -53,11 +63,14 @@ private:
     double dram_time;
     double l2_time;
 
-    int pending_reply_capacity;
-    int ejection_buffer_capacity;
-    int boundary_buffer_capacity;
-    int input_buffer_capacity;
-    int processing_buffer_capacity;
+    int subnet;
+    int nodes;
+    int vcs;
+    long unsigned int pending_reply_capacity;
+    long unsigned int ejection_buffer_capacity;
+    long unsigned int boundary_buffer_capacity;
+    long unsigned int input_buffer_capacity;
+    long unsigned int processing_buffer_capacity;
     class _BoundaryBufferItem {
     public:
         _BoundaryBufferItem():_packet_n(0) {}
@@ -95,9 +108,19 @@ public:
     void WriteOutBuffer(int, int, Flit*);
     void boundaryBufferTransfer(int, int);
     void process_request(int, mem_fetch*);
+    void set_Pending_Reply_capacity(int);
+    void set_boundary_buffer_capacity(int);
+    void pending_reply_push(int, mem_fetch*);
+    void pending_reply_pop(int);
+    int get_received_queue_occupancy(int, int);
+    bool boundary_buffer_isEmpty(int, int);
+    bool boundary_buffer_isFull(int, int);
     bool drain_queues();
+    bool pending_reply_isFull(int);
+    bool pending_reply_isEmpty(int);
     void init_clock_domains();
     int next_clock_domain();
+    int get_gpu_cycle();
     void reinit_clock_domains();
     int get_input_buffer_capacity(){ return input_buffer_capacity; }
     int get_ejection_buffer_capacity(){ return ejection_buffer_capacity; }

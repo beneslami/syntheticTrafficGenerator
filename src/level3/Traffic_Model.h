@@ -7,6 +7,7 @@
 
 #include "../RandomGenerator.h"
 #include "Temporal_Locality.h"
+#include "Spatial_Locality.h"
 #include <fstream>
 #include <string>
 
@@ -16,8 +17,10 @@ private:
     std::string traffic_model_path;
     class Temporal_Locality *request_temporal_locality;
     class Temporal_Locality *reply_temporal_locality;
+    class Spatial_Locality *spatial_locality;
 public:
-    Traffic_Model(std::string);
+    std::ofstream outTrace;
+    Traffic_Model(std::string, std::string);
     ~Traffic_Model();
     void read_model_file();
     int generate_off_cycle(std::string);
@@ -25,6 +28,7 @@ public:
     int generate_burst_volume(std::string, int);
     void show_model(std::string);
     int get_cycle();
+    Spatial_Locality *get_spatial_locality();
 };
 
 #endif //B_OOKSIM2_TRAFFC_MODEL_H

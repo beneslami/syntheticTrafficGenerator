@@ -7,14 +7,17 @@
 
 using json = nlohmann::json;
 
-Traffic_Model::Traffic_Model(std::string path) {
+Traffic_Model::Traffic_Model(std::string path, std::string output_trace_name) {
+    std::cout << "Initializing level3 traffic model " << std::endl;
     this->traffic_model_path = path;
+    outTrace.open(output_trace_name, std::ios::out);
     this->request_temporal_locality = new class Temporal_Locality();
     //TODO: later, add the reply temporal locality
 }
 
 Traffic_Model::~Traffic_Model(){
     delete request_temporal_locality;
+    outTrace.close();
 }
 
 int Traffic_Model::generate_off_cycle(std::string subnet) {
@@ -58,6 +61,10 @@ void Traffic_Model::show_model(std::string type) {
 
 int Traffic_Model::get_cycle() {
     return this->cycle;
+}
+
+Spatial_Locality *Traffic_Model::get_spatial_locality(){
+    return this->spatial_locality;
 }
 
 void Traffic_Model::read_model_file() {
@@ -119,6 +126,11 @@ void Traffic_Model::read_model_file() {
                     request_temporal_locality->set_burst_volume(volume_dist);
                 }
             }
+        }
+        else if(it.key() == "spatial"){
+            //TODO: do some stuff
+            Core_Model *core = new Core_Model(1);
+            spatial_locality->add_core_instance(core);
         }
     }
 }

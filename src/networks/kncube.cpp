@@ -39,6 +39,8 @@
 #include "kncube.hpp"
 #include "random_utils.hpp"
 #include "misc_utils.hpp"
+#include "../globals.hpp"
+#include "../Multi_GPU.h"
  //#include "iq_router.hpp"
 
 
@@ -116,8 +118,8 @@ void KNCube::_BuildNet( const Configuration &config )
       //
 
       // torus channel is longer due to wrap around
-      int latency = _mesh ? 1 : 2 ;
-
+      //int latency = _mesh ? 1 : 2 ;
+      int latency = (int)(32 * multi_GPU->get_frequnecy_ratio()) + 1;
       //get the input channel number
       right_input = _LeftChannel( right_node, dim );
       left_input  = _RightChannel( left_node, dim );

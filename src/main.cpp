@@ -54,7 +54,13 @@
 #include "power_module.hpp"
 #include "Multi_GPU.h"
 
-
+#if LEVEL == leve1
+#include "level1/Traffic_Model.h"
+#elif LEVEL == level2
+#include "level2/Traffic_Model.h"
+#elif LEVEL == level3
+#include "level3/Traffic_Model.h"
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////
 //Global declarations
@@ -62,6 +68,10 @@
 
 /* the current traffic manager instance */
 TrafficManager *trafficManager = NULL;
+Traffic_Model *trafficModel = NULL;
+class Multi_GPU;
+Multi_GPU *multi_GPU;
+
 
 int GetSimTime() {
     return trafficManager->getTime();
@@ -90,11 +100,6 @@ int gNodes;
 bool gTrace;
 
 ostream *gWatchOut;
-
-class Multi_GPU;
-Multi_GPU *multi_GPU;
-
-
 
 /////////////////////////////////////////////////////////////////////////////
 
@@ -157,14 +162,16 @@ bool Simulate(BookSimConfig const &config) {
 int main(int argc, char **argv) {
 
     BookSimConfig config;
-
-
     if (!ParseArgs(&config, argc, argv)) {
-        cerr << "Usage: " << argv[0] << " TOPOLOGY[mesh, ring, torus, fly]  NVLINK: [4, 3, 2, 1]" << "MODEL_FILE" << endl;
+        cerr << "Usage: " << argv[0] << " TOPOLOGY[mesh, ring, torus, fly]  NVLINK: [4, 3, 2, 1]" << "MODEL_FILE   SAVING_PATH" << endl;
         return 0;
     }
+
     multi_GPU = new Multi_GPU();
+    multi_GPU->init(config);
     multi_GPU->set_link_frequency(argv[1], atoi(argv[2]));
+    trafficModel = new Traffic_Model(argv[3], argv[4]);
+    trafficModel->read_model_file();
 
     /*initialize routing, traffic, injection functions
      */

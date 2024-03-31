@@ -38,6 +38,8 @@
 #include "batchtrafficmanager.hpp"
 #include "random_utils.hpp" 
 #include "vc.hpp"
+#include "globals.hpp"
+#include "Multi_GPU.h"
 #include "packet_reply_info.hpp"
 
 TrafficManager * TrafficManager::New(Configuration const & config,
@@ -58,7 +60,7 @@ TrafficManager * TrafficManager::New(Configuration const & config,
 TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net )
     : Module( 0, "traffic_manager" ), _net(net), _empty_network(false), _deadlock_timer(0), _reset_time(0), _drain_time(-1), _cur_id(0), _cur_pid(0), _time(0)
 {
-
+    _flit_size = config.GetInt("flit_size");
     _nodes = _net[0]->NumNodes( );
     _routers = _net[0]->NumRouters( );
 
@@ -288,7 +290,7 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _requestsOutstanding.resize(_nodes);
 
     _hold_switch_for_packet = config.GetInt("hold_switch_for_packet");
-    _flit_size = config.GetInt("flit_size");
+
     // ============ Simulation parameters ============ 
 
     _total_sims = config.GetInt( "sim_count" );
@@ -782,21 +784,20 @@ int TrafficManager::_IssuePacket( int source, int cl )
     return result;
 }
 
-void TrafficManager::_GeneratePacket( int source, int stype, 
-                                      int cl, int time )
-{
-    assert(stype!=0);
+void TrafficManager::_GeneratePacket(int source, int stype, int destination, Flit::FlitType p_type, int subnet, int cl, int time, void* const data){
+    assert(stype != 0);
 
-    Flit::FlitType packet_type = Flit::ANY_TYPE;
-    int size = _GetNextPacketSize(cl); //input size 
+    Flit::FlitType packet_type = p_type;
+    int size = 0;
+    //int size = _GetNextPacketSize(cl); //input size
     int pid = _cur_pid++;
     assert(_cur_pid);
-    int packet_destination = _traffic_pattern[cl]->dest(source);
+    int packet_destination = destination; //_traffic_pattern[cl]->dest(source);
     bool record = false;
     bool watch = gWatchOut && (_packets_to_watch.count(pid) > 0);
     unsigned int n_flits = stype / _flit_size + ((stype % _flit_size)? 1:0);
     size = n_flits;
-
+#if 0
     if(_use_read_write[cl]){
         if(stype > 0) {
             if (stype == 1) {
@@ -830,6 +831,7 @@ void TrafficManager::_GeneratePacket( int source, int stype,
             rinfo->Free();
         }
     }
+#endif
 
     if ((packet_destination <0) || (packet_destination >= _nodes)) {
         ostringstream err;
@@ -838,14 +840,11 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         Error( err.str( ) );
     }
 
-    if ( ( _sim_state == running ) ||
-         ( ( _sim_state == draining ) && ( time < _drain_time ) ) ) {
+    if ( ( _sim_state == running ) /*|| ( ( _sim_state == draining ) && ( time < _drain_time ) )*/ ) {
         record = _measure_stats[cl];
     }
 
-    int subnetwork = ((packet_type == Flit::ANY_TYPE) ? 
-                      RandomInt(_subnets-1) :
-                      _subnet[packet_type]);
+    int subnetwork = subnet;
   
     if ( watch ) { 
         *gWatchOut << GetSimTime() << " | "
@@ -866,6 +865,10 @@ void TrafficManager::_GeneratePacket( int source, int stype,
         f->ctime  = time;
         f->record = record;
         f->cl     = cl;
+
+        f->data = data;
+        f->packet_size = static_cast<mem_fetch*>(data)->size;
+        f->packet_id = static_cast<mem_fetch*>(data)->id;
 
         _total_in_flight_flits[f->cl].insert(make_pair(f->id, f));
         if(record) {
@@ -971,13 +974,28 @@ void TrafficManager::_Step( )
         for ( int n = 0; n < _nodes; ++n ) {
             Flit * const f = _net[subnet]->ReadFlit( n );
             if ( f ) {
-                if(f->watch) {
+                if (f->watch) {
                     *gWatchOut << GetSimTime() << " | "
                                << "node" << n << " | "
                                << "Ejecting flit " << f->id
                                << " (packet " << f->pid << ")"
                                << " from VC " << f->vc
                                << "." << endl;
+                }
+                multi_GPU->WriteOutBuffer(subnet, n, f);
+            }
+            multi_GPU->boundaryBufferTransfer(subnet, n);
+            Flit *const ejected_flit = multi_GPU->GetEjectedFlit(subnet, n);
+            if(ejected_flit){
+                if (ejected_flit->head)
+                    assert(ejected_flit->dest == n);
+                if (ejected_flit->watch) {
+                    *gWatchOut << GetSimTime() << " | "
+                               << "node" << n << " | "
+                               << "Ejected flit " << ejected_flit->id
+                               << " (packet " << ejected_flit->pid
+                               << " VC " << ejected_flit->vc << ")"
+                               << "from ejection buffer." << endl;
                 }
                 flits[subnet].insert(make_pair(n, f));
                 if((_sim_state == warming_up) || (_sim_state == running)) {
@@ -1006,10 +1024,12 @@ void TrafficManager::_Step( )
         }
         _net[subnet]->ReadInputs( );
     }
-  
+
+#if 0   //synthetic traffic model will generate packets
     if ( !_empty_network ) {
         _Inject();
     }
+#endif
 
     for(int subnet = 0; subnet < _subnets; ++subnet) {
 
@@ -1018,7 +1038,6 @@ void TrafficManager::_Step( )
             Flit * f = NULL;
 
             BufferState * const dest_buf = _buf_states[n][subnet];
-
             int const last_class = _last_class[n][subnet];
 
             int class_limit = _classes;
@@ -1426,22 +1445,17 @@ bool TrafficManager::_SingleSim( )
     vector<double> prev_accepted(_classes, 0.0);
     bool clear_last = false;
     int total_phases = 0;
-    while( ( total_phases < _max_samples ) && 
-           ( ( _sim_state != running ) || 
-             ( converged < 3 ) ) ) {
-    
+    while( ( total_phases < _max_samples ) && ( ( _sim_state != running ) || ( converged < 3 ) ) ) {
         if ( clear_last || (( ( _sim_state == warming_up ) && ( ( total_phases % 2 ) == 0 ) )) ) {
             clear_last = false;
             _ClearStats( );
         }
     
     
-        for ( int iter = 0; iter < _sample_period; ++iter )
-            _Step( );
-    
-        //cout << _sim_state << endl;
-
+        multi_GPU->run(); // Start generating synthetic traffic
         UpdateStats();
+        std::cout << "run finished: " << multi_GPU->get_gpu_cycle() << std::endl;
+
         DisplayStats();
     
         int lat_exc_class = -1;
@@ -1555,26 +1569,18 @@ bool TrafficManager::_SingleSim( )
         if ( _measure_latency ) {
             cout << "Draining all recorded packets ..." << endl;
             int empty_steps = 0;
-            while( _PacketsOutstanding( ) ) { 
-                _Step( ); 
-	
+            while(!multi_GPU->drain_queues()) { //_PacketsOutstanding( )
+                _Step( );
                 ++empty_steps;
-	
                 if ( empty_steps % 1000 == 0 ) {
-	  
                     int lat_exc_class = -1;
-	  
                     for(int c = 0; c < _classes; c++) {
-	    
                         double threshold = _latency_thres[c];
-	    
                         if(threshold < 0.0) {
                             continue;
                         }
-	    
                         double acc_latency = _plat_stats[c]->Sum();
                         double acc_count = (double)_plat_stats[c]->NumSamples();
-	    
                         map<int, Flit *>::const_iterator iter;
                         for(iter = _total_in_flight_flits[c].begin(); 
                             iter != _total_in_flight_flits[c].end(); 
@@ -1582,13 +1588,11 @@ bool TrafficManager::_SingleSim( )
                             acc_latency += (double)(_time - iter->second->ctime);
                             acc_count++;
                         }
-	    
                         if((acc_latency / acc_count) > threshold) {
                             lat_exc_class = c;
                             break;
                         }
                     }
-	  
                     if(lat_exc_class >= 0) {
                         cout << "Average latency for class " << lat_exc_class << " exceeded " << _latency_thres[lat_exc_class] << " cycles. Aborting simulation." << endl;
                         converged = 0; 
@@ -1598,9 +1602,7 @@ bool TrafficManager::_SingleSim( )
                         }
                         break;
                     }
-	  
-                    _DisplayRemaining( ); 
-	  
+                    _DisplayRemaining( );
                 }
             }
         }
@@ -1619,14 +1621,14 @@ bool TrafficManager::Run( )
 
         //remove any pending request from the previous simulations
         _requestsOutstanding.assign(_nodes, 0);
-        for (int i=0;i<_nodes;i++) {
+        for (int i = 0; i < _nodes; i++) {
             while(!_repliesPending[i].empty()) {
                 _repliesPending[i].front()->Free();
                 _repliesPending[i].pop_front();
             }
         }
 
-        //reset queuetime for all sources
+        //reset queue time for all sources
         for ( int s = 0; s < _nodes; ++s ) {
             _qtime[s].assign(_classes, 0);
             _qdrained[s].assign(_classes, false);
@@ -1658,10 +1660,16 @@ bool TrafficManager::Run( )
         bool packets_left = false;
         for(int c = 0; c < _classes; ++c) {
             packets_left |= !_total_in_flight_flits[c].empty();
+            if(multi_GPU->drain_queues()) {
+                packets_left |= false;
+            }
+            else{
+                packets_left |= true;
+            }
         }
 
-        while( packets_left ) { 
-            _Step( ); 
+        while( multi_GPU->drain_queues() ) {
+            //_Step( );
 
             ++empty_steps;
 
@@ -1676,14 +1684,15 @@ bool TrafficManager::Run( )
         }
         //wait until all the credits are drained as well
         while(Credit::OutStanding()!=0){
-            _Step();
+            //_Step();
+            multi_GPU->drain_queues();
         }
         _empty_network = false;
 
         //for the love of god don't ever say "Time taken" anywhere else
         //the power script depend on it
-        cout << "Time taken is " << _time << " cycles" <<endl; 
-
+        cout << "Interconnect Time taken is " << _time << " cycles" <<endl;
+        std::cout << "GPU Time taken is " << multi_GPU->get_gpu_cycle() << " cycles" << std::endl;
         if(_stats_out) {
             WriteStats(*_stats_out);
         }

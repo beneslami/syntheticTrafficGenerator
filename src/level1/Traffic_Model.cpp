@@ -7,58 +7,18 @@
 
 using json = nlohmann::json;
 
-Temporal_Locality::Temporal_Locality() {
-
-}
-
-Temporal_Locality::~Temporal_Locality() {
-
-}
-
-void Temporal_Locality::set_iat(RandomGenerator::CustomDistribution *dist) {
-    this->iat = dist;
-}
-
-void Temporal_Locality::set_burst_duration(RandomGenerator::CustomDistribution *dist) {
-    this->burst_duration = dist;
-}
-
-void Temporal_Locality::set_burst_volume(std::map<int, RandomGenerator::CustomDistribution *>dist) {
-    this->burst_volume = dist;
-}
-
-int Temporal_Locality::generate_iat() {
-    return this->iat->Generate();
-}
-
-int Temporal_Locality::generate_burst_duration() {
-    return this->burst_duration->Generate();
-}
-
-int Temporal_Locality::generate_burst_volume(int duration) {
-    return burst_volume[duration]->Generate();
-}
-
-void Temporal_Locality::show_model(){
-    std::cout << "----Inter Arrival Time----\n";
-    this->iat->show_cdf();
-    std::cout << "----Burst Duration----\n";
-    this->burst_duration->show_cdf();
-    std::map<int, RandomGenerator::CustomDistribution*>::iterator it;
-    for(it = burst_volume.begin(); it != burst_volume.end(); ++it) {
-        std::cout << "----Burst volume " << it->first << "----\n";
-        it->second->show_cdf();
-    }
-}
-
-Traffic_Model::Traffic_Model(std::string path) {
+Traffic_Model::Traffic_Model(std::string path, std::string output_trace_name) {
+    std::cout << "Initializing level1 traffic model " << std::endl;
     this->traffic_model_path = path;
+    outTrace.open(output_trace_name, std::ios::out);
     this->request_temporal_locality = new class Temporal_Locality();
+    this->spatial_locality = new class Spatial_Locality();
     //TODO: later, add the reply temporal locality
 }
 
 Traffic_Model::~Traffic_Model(){
     delete request_temporal_locality;
+    outTrace.close();
 }
 
 int Traffic_Model::generate_off_cycle(std::string subnet) {
@@ -100,11 +60,18 @@ void Traffic_Model::show_model(std::string type) {
     }
 }
 
+Spatial_Locality *Traffic_Model::get_spatial_locality(){
+    return this->spatial_locality;
+}
+
 void Traffic_Model::read_model_file() {
     std::ifstream modelFile(traffic_model_path);
     json data = json::parse(modelFile);
     for(json::iterator it = data.begin(); it != data.end(); ++it){ // Either temporal or spatial
-        if(it.key() == "temporal"){
+        if(it.key() == "cycle"){
+            this->cycle = atoi(it.value().dump().c_str());
+        }
+        else if(it.key() == "temporal"){
             for(json::iterator it2 = it->begin(); it2 != it->end(); ++it2){ // iat, burst duration and burst volume
                 std::map<int, int>temp;
                 if(it2.key() == "iat") {
@@ -144,6 +111,11 @@ void Traffic_Model::read_model_file() {
                     request_temporal_locality->set_burst_volume(volume_dist);
                 }
             }
+        }
+        else if(it.key() == "spatial"){
+            //TODO: do some stuff
+            Core_Model *core = new Core_Model(1);
+            spatial_locality->add_core_instance(core);
         }
     }
 }
