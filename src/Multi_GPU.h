@@ -11,6 +11,7 @@
 #include <map>
 #include <cmath>
 #include "flit.hpp"
+#include "networks/network.hpp"
 #include "booksim_config.hpp"
 #include "trafficmanager.hpp"
 
@@ -42,7 +43,7 @@ typedef struct mem_fetch{
     int interval;
 }mem_fetch;
 
-class Multi_GPU{
+class Multi_GPU : public TrafficManager{
 private:
     int gpu_cycle;
     double core_freq = 1132.0;
@@ -66,6 +67,11 @@ private:
     int subnet;
     int nodes;
     int vcs;
+
+    int burst_duration;
+    int burst_volume;
+    int iat;
+
     long unsigned int pending_reply_capacity;
     long unsigned int ejection_buffer_capacity;
     long unsigned int boundary_buffer_capacity;
@@ -88,6 +94,7 @@ private:
     };
     typedef queue<Flit*> _EjectionBufferItem;
 
+    std::vector<int>byteArray;
     std::vector<queue<mem_fetch *> > _pending_reply;
     std::vector<vector<vector<_BoundaryBufferItem> > > _boundary_buffer;
     vector<vector<vector<_EjectionBufferItem> > > _ejection_buffer;
@@ -95,6 +102,7 @@ private:
     std::vector<vector<int> >_round_robin_turn;
     std::map<int, std::vector<mem_fetch*> >_processing_queue;
     double IcntToCoreRatio;
+    void byte_spread_within_burst(int, int);
 public:
     Multi_GPU();
     ~Multi_GPU();

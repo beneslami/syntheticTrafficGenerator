@@ -7,6 +7,7 @@
 
 
 #include "../RandomGenerator.h"
+#include "../trafficmanager.hpp"
 #include "Spatial_Locality.h"
 #include "Temporal_Locality.h"
 #include <fstream>
@@ -30,6 +31,7 @@ public:
     int generate_burst_volume(std::string, int);
     void show_model(std::string);
     Spatial_Locality *get_spatial_locality();
+    int get_cycle();
 };
 
 

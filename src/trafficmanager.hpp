@@ -121,8 +121,7 @@ protected:
 
     vector <vector<int>> _qtime;
     vector <vector<bool>> _qdrained;
-    vector <vector<list < Flit * >> >
-    _partial_packets;
+    vector <vector <vector<list < Flit * >>> >_partial_packets;
 
     vector <map<int, Flit *>> _total_in_flight_flits;
     vector <map<int, Flit *>> _measured_in_flight_flits;
@@ -154,6 +153,15 @@ protected:
     vector<double> _overall_min_plat;
     vector<double> _overall_avg_plat;
     vector<double> _overall_max_plat;
+
+    vector<Stats *> gpu_sim_time;
+    vector<double> gpu_min_sim_time;
+    vector<double> gpu_max_sim_time;
+    vector<double> gpu_avg_sim_time;
+    vector<Stats *> icnt_sim_time;
+    vector<double> icnt_min_sim_time;
+    vector<double> icnt_max_sim_time;
+    vector<double> icnt_avg_sim_time;
 
     vector<Stats *> _nlat_stats;
     vector<double> _overall_min_nlat;
@@ -193,6 +201,7 @@ protected:
     vector<double> _overall_min_accepted;
     vector<double> _overall_avg_accepted;
     vector<double> _overall_max_accepted;
+
 
 #ifdef TRACK_STALLS
     vector<vector<int> > _buffer_busy_stalls;
@@ -306,22 +315,24 @@ protected:
 
     double _GetAveragePacketSize(int cl) const;
 
+    bool check_if_any_packet_to_drain();
+
 public:
 
-    static TrafficManager *New(Configuration const &config,
-                               vector<Network *> const &net);
+    static TrafficManager *New(Configuration const &config, vector<Network *> const &net, std::string stats_out);
 
-    TrafficManager(const Configuration &config, const vector<Network *> &net);
+    TrafficManager(Configuration const &config, vector<Network *> const &net, std::string stats_out);
+    TrafficManager();
 
     virtual ~TrafficManager();
 
     bool Run();
 
-    virtual void WriteStats(ostream &os = cout) const;
+    virtual void WriteStats(ostream &os = cout, int turn=0) const;
 
     virtual void UpdateStats();
 
-    virtual void DisplayStats(ostream &os = cout) const;
+    virtual void DisplayStats(ostream & os = cout) const;
 
     virtual void DisplayOverallStats(ostream &os = cout) const;
 

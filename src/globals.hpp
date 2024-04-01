@@ -52,5 +52,7 @@ extern std::ostream * gWatchOut;
 extern class TrafficManager *trafficManager;
 extern class Traffic_Model *trafficModel;
 extern class Multi_GPU *multi_GPU;
-
+extern double total_time;
+extern struct timeval start_time;
+extern struct timeval end_time;
 #endif

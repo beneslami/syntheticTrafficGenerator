@@ -7,7 +7,7 @@
 #include "trafficmanager.hpp"
 
 
-Multi_GPU::Multi_GPU(){
+Multi_GPU::Multi_GPU(): TrafficManager(){
 
 }
 
@@ -232,7 +232,7 @@ void Multi_GPU::icnt_push(int src, int dest, mem_fetch *mf){
     } else{
         subnet = 1;
     }
-    trafficManager->_GeneratePacket(src, mf->size, dest, mf->type, subnet, 0, GetSimTime(), (void *) mf);
+    this->_GeneratePacket(src, mf->size, dest, mf->type, subnet, 0, GetSimTime(), (void *) mf);
 }
 
 mem_fetch* Multi_GPU::icnt_pop(int subnet, int chiplet){
@@ -315,10 +315,75 @@ void* Multi_GPU::_BoundaryBufferItem::PopPacket(){
 }
 
 bool Multi_GPU::drain_queues() {
-    return true;
+    bool flag = false;
+    while(!flag){
+        int clock_mask = next_clock_domain();
+
+        if(clock_mask & ICNT_chLet){
+
+        }
+
+        if(clock_mask & CORE){
+            // pop from m_response_fifo. the packet is already in the chiplet
+        }
+
+        if(clock_mask & ICNT){
+            // local transactions from LLC to cluster
+        }
+
+        if(clock_mask & ICNT_chLet){
+            //TODO: Reply side
+        }
+
+        if(clock_mask & DRAM){
+            // DRAM transactions happen here
+        }
+
+        if(clock_mask & L2){
+            // pop remote request from the queue
+            //for(int input = 0; input < this->nodes; input++){
+            //processing_queue_pop(input);
+            //}
+        }
+
+        if(clock_mask & ICNT){
+            // internal interconnect
+        }
+
+        if(clock_mask & ICNT_chLet){
+            this->_Step();
+        }
+
+        if(clock_mask & CORE){
+            //no request will be generated in this level.
+            this->gpu_cycle++;
+        }
+
+        for(int sub = 0; sub < this->subnet; sub++){
+            for (int input = 0; input < this->nodes; input++){
+                for(int vc = 0; vc < this->vcs; vc++){
+                    if (!_boundary_buffer[sub][input][vc].HasPacket() &&
+                            _ejected_flit_queue[sub][input].empty() &&
+                            _ejection_buffer[sub][input][vc].empty() &&
+                            _processing_queue[input].empty() &&
+                            _pending_reply[input].empty() && this->check_if_any_packet_to_drain()) {
+
+                        flag = true;
+                        return flag;
+                    }
+                }
+            }
+        }
+    }
+    return flag;
 }
 
 void Multi_GPU::run(){
+    bool burst_state = 1;
+    bool on_state = 0;
+    bool off_state = 0;
+    int begin_off_cycle = 0;
+    int begin_on_cycle = 0;
     do{
         int clock_mask = next_clock_domain();
 
@@ -344,9 +409,9 @@ void Multi_GPU::run(){
 
         if(clock_mask & L2){
             // pop remote request from the queue
-            for(int input = 0; input < this->nodes; input++){
+            //for(int input = 0; input < this->nodes; input++){
                 //processing_queue_pop(input);
-            }
+            //}
         }
 
         if(clock_mask & ICNT){
@@ -354,11 +419,51 @@ void Multi_GPU::run(){
         }
 
         if(clock_mask & ICNT_chLet){
-            trafficManager->_Step();
+            //this->_Step();
         }
 
         if(clock_mask & CORE){
             //TODO: request side
+            if(burst_state == 1){
+                if(on_state == 0){
+                    this->burst_duration = trafficModel->generate_burst_duration("req");
+                    this->burst_volume = trafficModel->generate_burst_volume("req", burst_duration);
+                    this->byte_spread_within_burst(burst_duration, burst_volume);
+                    begin_on_cycle = this->gpu_cycle;
+                    on_state = 1;
+                }
+                if(on_state == 1){
+                    assert(this->gpu_cycle >= begin_on_cycle);
+                    int byte = this->byteArray[this->gpu_cycle - begin_on_cycle];
+
+                    //TODO: spatial locality stuff is here
+
+                    if(this->gpu_cycle - begin_on_cycle == this->burst_duration - 1){
+                        on_state = 0;
+                        burst_state = 0;
+                        off_state = 0;
+                    }
+                }
+            }
+            if(burst_state == 0){
+                if(off_state == 0) {
+                    begin_off_cycle = this->gpu_cycle;
+                    this->iat = trafficModel->generate_off_cycle("req");
+                    off_state = 1;
+                }
+                if(off_state == 1){
+                    if(this->gpu_cycle - begin_off_cycle >= this->iat){
+                        burst_state = 1;
+                        off_state = 0;
+                        on_state = 0;
+                    }
+                }
+            }
+            this->gpu_cycle++;
         }
     }while(this->gpu_cycle <= trafficModel->get_cycle());
+}
+
+void Multi_GPU::byte_spread_within_burst(int length, int volume) {
+
 }

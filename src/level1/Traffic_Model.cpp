@@ -64,6 +64,10 @@ Spatial_Locality *Traffic_Model::get_spatial_locality(){
     return this->spatial_locality;
 }
 
+int Traffic_Model::get_cycle() {
+    return this->cycle;
+}
+
 void Traffic_Model::read_model_file() {
     std::ifstream modelFile(traffic_model_path);
     json data = json::parse(modelFile);

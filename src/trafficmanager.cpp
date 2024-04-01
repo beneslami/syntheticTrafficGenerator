@@ -31,6 +31,7 @@
 #include <limits>
 #include <cstdlib>
 #include <ctime>
+#include <sys/time.h>
 
 #include "booksim.hpp"
 #include "booksim_config.hpp"
@@ -42,22 +43,21 @@
 #include "Multi_GPU.h"
 #include "packet_reply_info.hpp"
 
-TrafficManager * TrafficManager::New(Configuration const & config,
-                                     vector<Network *> const & net)
+TrafficManager * TrafficManager::New(Configuration const & config, vector<Network *> const & net, std::string stats)
 {
     TrafficManager * result = NULL;
     string sim_type = config.GetStr("sim_type");
     if((sim_type == "latency") || (sim_type == "throughput")) {
-        result = new TrafficManager(config, net);
+        result = new TrafficManager(config, net, stats);
     } else if(sim_type == "batch") {
-        result = new BatchTrafficManager(config, net);
+        result = new BatchTrafficManager(config, net, stats);
     } else {
         cerr << "Unknown simulation type: " << sim_type << endl;
     } 
     return result;
 }
 
-TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net )
+TrafficManager::TrafficManager( const Configuration &config, const vector<Network *> & net, std::string stats )
     : Module( 0, "traffic_manager" ), _net(net), _empty_network(false), _deadlock_timer(0), _reset_time(0), _drain_time(-1), _cur_id(0), _cur_pid(0), _time(0)
 {
     _flit_size = config.GetInt("flit_size");
@@ -273,12 +273,20 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
 
     _qtime.resize(_nodes);
     _qdrained.resize(_nodes);
-    _partial_packets.resize(_nodes);
+
+    _partial_packets.resize(_subnets);
+    for(int i = 0; i < _subnets; ++i){
+        _partial_packets[i].resize(_nodes);
+    }
+    for(int i = 0; i < _subnets; ++i){
+        for(int j = 0; j < _nodes; ++j){
+            _partial_packets[i][j].resize(_classes);
+        }
+    }
 
     for ( int s = 0; s < _nodes; ++s ) {
         _qtime[s].resize(_classes);
         _qdrained[s].resize(_classes);
-        _partial_packets[s].resize(_classes);
     }
 
     _total_in_flight_flits.resize(_classes);
@@ -382,6 +390,9 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
         _stats_out = new ofstream(stats_out_file.c_str());
         config.WriteMatlabFile(_stats_out);
     }
+
+    stats.append("bookSim_output.txt");
+    _stats_out = new ofstream(stats.c_str());
   
 #ifdef TRACK_FLOWS
     _injected_flits.resize(_classes, vector<int>(_nodes, 0));
@@ -463,6 +474,16 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _overall_avg_nlat.resize(_classes, 0.0);
     _overall_max_nlat.resize(_classes, 0.0);
 
+    gpu_sim_time.resize(_classes);
+    gpu_min_sim_time.resize(_classes, 0.0);
+    gpu_max_sim_time.resize(_classes, 0.0);
+    gpu_avg_sim_time.resize(_classes, 0.0);
+
+    icnt_sim_time.resize(_classes);
+    icnt_min_sim_time.resize(_classes, 0.0);
+    icnt_max_sim_time.resize(_classes, 0.0);
+    icnt_avg_sim_time.resize(_classes, 0.0);
+
     _flat_stats.resize(_classes);
     _overall_min_flat.resize(_classes, 0.0);
     _overall_avg_flat.resize(_classes, 0.0);
@@ -541,6 +562,16 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
         _stats[tmp_name.str()] = _hop_stats[c];
         tmp_name.str("");
 
+        tmp_name << "gpu_cycle_stat_" << c;
+        gpu_sim_time[c] = new Stats( this, tmp_name.str( ), 1.0, 20 );
+        _stats[tmp_name.str()] = gpu_sim_time[c];
+        tmp_name.str("");
+
+        tmp_name << "icnt_cycle_stat_" << c;
+        icnt_sim_time[c] = new Stats( this, tmp_name.str( ), 1.0, 20 );
+        _stats[tmp_name.str()] = icnt_sim_time[c];
+        tmp_name.str("");
+
         if(_pair_stats){
             _pair_plat[c].resize(_nodes*_nodes);
             _pair_nlat[c].resize(_nodes*_nodes);
@@ -583,14 +614,13 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
 
     _slowest_flit.resize(_classes, -1);
     _slowest_packet.resize(_classes, -1);
+}
 
- 
+TrafficManager::TrafficManager(): Module( 0, "traffic_manager" ) {
 
 }
 
-TrafficManager::~TrafficManager( )
-{
-
+TrafficManager::~TrafficManager( ){
     for ( int source = 0; source < _nodes; ++source ) {
         for ( int subnet = 0; subnet < _subnets; ++subnet ) {
             delete _buf_states[source][subnet];
@@ -603,6 +633,8 @@ TrafficManager::~TrafficManager( )
         delete _flat_stats[c];
         delete _frag_stats[c];
         delete _hop_stats[c];
+        delete gpu_sim_time[c];
+        delete icnt_sim_time[c];
 
         delete _traffic_pattern[c];
         delete _injection_process[c];
@@ -641,9 +673,7 @@ TrafficManager::~TrafficManager( )
     Credit::FreeAll();
 }
 
-
-void TrafficManager::_RetireFlit( Flit *f, int dest )
-{
+void TrafficManager::_RetireFlit( Flit *f, int dest ){
     _deadlock_timer = 0;
 
     assert(_total_in_flight_flits[f->cl].count(f->id) > 0);
@@ -753,8 +783,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest )
     }
 }
 
-int TrafficManager::_IssuePacket( int source, int cl )
-{
+int TrafficManager::_IssuePacket( int source, int cl ){
     int result = 0;
     if(_use_read_write[cl]){ //use read and write
         //check queue for waiting replies.
@@ -920,45 +949,42 @@ void TrafficManager::_GeneratePacket(int source, int stype, int destination, Fli
                        << ") at time " << time
                        << "." << endl;
         }
-
-        _partial_packets[source][cl].push_back( f );
+        _partial_packets[subnetwork][source][cl].push_back( f );
     }
 }
 
 void TrafficManager::_Inject(){
+    for(int sub = 0; sub < _subnets; ++sub) {
+        for (int input = 0; input < _nodes; ++input) {
+            for (int c = 0; c < _classes; ++c) {
+                // Potentially generate packets for any (input,class)
+                // that is currently empty
+                if (_partial_packets[sub][input][c].empty()) {
+                    bool generated = false;
+                    while (!generated && (_qtime[input][c] <= _time)) {
+                        int stype = _IssuePacket(input, c);
 
-    for ( int input = 0; input < _nodes; ++input ) {
-        for ( int c = 0; c < _classes; ++c ) {
-            // Potentially generate packets for any (input,class)
-            // that is currently empty
-            if ( _partial_packets[input][c].empty() ) {
-                bool generated = false;
-                while( !generated && ( _qtime[input][c] <= _time ) ) {
-                    int stype = _IssuePacket( input, c );
-	  
-                    if ( stype != 0 ) { //generate a packet
-                        _GeneratePacket( input, stype, c, 
-                                         _include_queuing==1 ? 
-                                         _qtime[input][c] : _time );
-                        generated = true;
+                        if (stype != 0) { //generate a packet
+                            //_GeneratePacket( input, stype, c, _include_queuing==1 ? _qtime[input][c] : _time );
+                            generated = true;
+                        }
+                        // only advance time if this is not a reply packet
+                        if (!_use_read_write[c] || (stype >= 0)) {
+                            ++_qtime[input][c];
+                        }
                     }
-                    // only advance time if this is not a reply packet
-                    if(!_use_read_write[c] || (stype >= 0)){
-                        ++_qtime[input][c];
+
+                    if ((_sim_state == draining) &&
+                        (_qtime[input][c] > _drain_time)) {
+                        _qdrained[input][c] = true;
                     }
-                }
-	
-                if ( ( _sim_state == draining ) && 
-                     ( _qtime[input][c] > _drain_time ) ) {
-                    _qdrained[input][c] = true;
                 }
             }
         }
     }
 }
 
-void TrafficManager::_Step( )
-{
+void TrafficManager::_Step( ){
     bool flits_in_flight = false;
     for(int c = 0; c < _classes; ++c) {
         flits_in_flight |= !_total_in_flight_flits[c].empty();
@@ -1032,20 +1058,16 @@ void TrafficManager::_Step( )
 #endif
 
     for(int subnet = 0; subnet < _subnets; ++subnet) {
-
         for(int n = 0; n < _nodes; ++n) {
-
             Flit * f = NULL;
-
             BufferState * const dest_buf = _buf_states[n][subnet];
             int const last_class = _last_class[n][subnet];
 
             int class_limit = _classes;
 
             if(_hold_switch_for_packet) {
-                list<Flit *> const & pp = _partial_packets[n][last_class];
-                if(!pp.empty() && !pp.front()->head && 
-                   !dest_buf->IsFullFor(pp.front()->vc)) {
+                list<Flit *> const & pp = _partial_packets[subnet][n][last_class];
+                if(!pp.empty() && !pp.front()->head && !dest_buf->IsFullFor(pp.front()->vc)) {
                     f = pp.front();
                     assert(f->vc == _last_vc[n][subnet][last_class]);
 
@@ -1056,10 +1078,8 @@ void TrafficManager::_Step( )
             }
 
             for(int i = 1; i <= class_limit; ++i) {
-
                 int const c = (last_class + i) % _classes;
-
-                list<Flit *> const & pp = _partial_packets[n][c];
+                list<Flit *> const & pp = _partial_packets[subnet][n][c];
 
                 if(pp.empty()) {
                     continue;
@@ -1068,10 +1088,11 @@ void TrafficManager::_Step( )
                 Flit * const cf = pp.front();
                 assert(cf);
                 assert(cf->cl == c);
-	
-                if(cf->subnetwork != subnet) {
-                    continue;
-                }
+                assert(cf->subnetwork == subnet);
+
+                //if(cf->subnetwork != subnet) {
+                    //continue;
+                //}
 
                 if(f && (f->pri >= cf->pri)) {
                     continue;
@@ -1210,7 +1231,7 @@ void TrafficManager::_Step( )
 	
                 _last_class[n][subnet] = c;
 
-                _partial_packets[n][c].pop_front();
+                _partial_packets[subnet][n][c].pop_front();
 
 #ifdef TRACK_FLOWS
                 ++_outstanding_credits[c][subnet][n];
@@ -1236,8 +1257,8 @@ void TrafficManager::_Step( )
                 f->itime = _time;
 
                 // Pass VC "back"
-                if(!_partial_packets[n][c].empty() && !f->tail) {
-                    Flit * const nf = _partial_packets[n][c].front();
+                if(!_partial_packets[subnet][n][c].empty() && !f->tail) {
+                    Flit * const nf = _partial_packets[subnet][n][c].front();
                     nf->vc = f->vc;
                 }
 	
@@ -1296,8 +1317,7 @@ void TrafficManager::_Step( )
 
 }
   
-bool TrafficManager::_PacketsOutstanding( ) const
-{
+bool TrafficManager::_PacketsOutstanding( ) const{
     for ( int c = 0; c < _classes; ++c ) {
         if ( _measure_stats[c] ) {
             if ( _measured_in_flight_flits[c].empty() ) {
@@ -1322,8 +1342,7 @@ bool TrafficManager::_PacketsOutstanding( ) const
     return false;
 }
 
-void TrafficManager::_ClearStats( )
-{
+void TrafficManager::_ClearStats( ){
     _slowest_flit.assign(_classes, -1);
     _slowest_packet.assign(_classes, -1);
 
@@ -1332,6 +1351,9 @@ void TrafficManager::_ClearStats( )
         _plat_stats[c]->Clear( );
         _nlat_stats[c]->Clear( );
         _flat_stats[c]->Clear( );
+
+        gpu_sim_time[c]->Clear();
+        icnt_sim_time[c]->Clear();
 
         _frag_stats[c]->Clear( );
 
@@ -1359,7 +1381,6 @@ void TrafficManager::_ClearStats( )
         _hop_stats[c]->Clear();
 
     }
-
     _reset_time = _time;
 }
 
@@ -1402,7 +1423,7 @@ void TrafficManager::_ComputeStats( const vector<int> & stats, int *sum, int *mi
     }
 }
 
-void TrafficManager::_DisplayRemaining( ostream & os ) const 
+void TrafficManager::_DisplayRemaining( ostream & os ) const
 {
     for(int c = 0; c < _classes; ++c) {
 
@@ -1436,8 +1457,7 @@ void TrafficManager::_DisplayRemaining( ostream & os ) const
     }
 }
 
-bool TrafficManager::_SingleSim( )
-{
+bool TrafficManager::_SingleSim( ){
     int converged = 0;
   
     //once warmed up, we require 3 converging runs to end the simulation 
@@ -1445,8 +1465,8 @@ bool TrafficManager::_SingleSim( )
     vector<double> prev_accepted(_classes, 0.0);
     bool clear_last = false;
     int total_phases = 0;
-    while( ( total_phases < _max_samples ) && ( ( _sim_state != running ) || ( converged < 3 ) ) ) {
-        if ( clear_last || (( ( _sim_state == warming_up ) && ( ( total_phases % 2 ) == 0 ) )) ) {
+    while(total_phases < _max_samples) {
+        if (clear_last || (_sim_state == warming_up)) {
             clear_last = false;
             _ClearStats( );
         }
@@ -1454,9 +1474,8 @@ bool TrafficManager::_SingleSim( )
     
         multi_GPU->run(); // Start generating synthetic traffic
         UpdateStats();
-        std::cout << "run finished: " << multi_GPU->get_gpu_cycle() << std::endl;
 
-        DisplayStats();
+        //DisplayStats();
     
         int lat_exc_class = -1;
         int lat_chg_exc_class = -1;
@@ -1498,7 +1517,7 @@ bool TrafficManager::_SingleSim( )
                 lat_exc_class = c;
             }
       
-            cout << "latency change    = " << latency_change << endl;
+            //cout << "latency change    = " << latency_change << endl;
             if(lat_chg_exc_class < 0) {
                 if((_sim_state == warming_up) &&
                    (_warmup_threshold[c] >= 0.0) &&
@@ -1511,7 +1530,7 @@ bool TrafficManager::_SingleSim( )
                 }
             }
       
-            cout << "throughput change = " << accepted_change << endl;
+            //cout << "throughput change = " << accepted_change << endl;
             if(acc_chg_exc_class < 0) {
                 if((_sim_state == warming_up) &&
                    (_acc_warmup_threshold[c] >= 0.0) &&
@@ -1523,7 +1542,6 @@ bool TrafficManager::_SingleSim( )
                     acc_chg_exc_class = c;
                 }
             }
-      
         }
     
         // Fail safe for latency mode, throughput will ust continue
@@ -1541,19 +1559,17 @@ bool TrafficManager::_SingleSim( )
         }
     
         if ( _sim_state == warming_up ) {
-            if ( ( _warmup_periods > 0 ) ? 
-                 ( total_phases + 1 >= _warmup_periods ) :
-                 ( ( !_measure_latency || ( lat_chg_exc_class < 0 ) ) &&
-                   ( acc_chg_exc_class < 0 ) ) ) {
-                cout << "Warmed up ..." <<  "Time used is " << _time << " cycles" <<endl;
+            if (total_phases + 1 >= _warmup_periods) {
+                //cout << "Warmed up ..." <<  "Time used is " << _time << " cycles" <<endl;
                 clear_last = true;
                 _sim_state = running;
             }
-        } else if(_sim_state == running) {
-            if ( ( !_measure_latency || ( lat_chg_exc_class < 0 ) ) &&
-                 ( acc_chg_exc_class < 0 ) ) {
+        }
+        else if(_sim_state == running) {
+            if ( ( !_measure_latency || ( lat_chg_exc_class < 0 ) ) && ( acc_chg_exc_class < 0 ) ) {
                 ++converged;
-            } else {
+            }
+            else {
                 converged = 0;
             }
         }
@@ -1567,10 +1583,10 @@ bool TrafficManager::_SingleSim( )
         _drain_time = _time;
 
         if ( _measure_latency ) {
-            cout << "Draining all recorded packets ..." << endl;
+            //cout << "Draining all recorded packets ..." << endl;
             int empty_steps = 0;
             while(!multi_GPU->drain_queues()) { //_PacketsOutstanding( )
-                _Step( );
+                //_Step( );
                 ++empty_steps;
                 if ( empty_steps % 1000 == 0 ) {
                     int lat_exc_class = -1;
@@ -1602,7 +1618,7 @@ bool TrafficManager::_SingleSim( )
                         }
                         break;
                     }
-                    _DisplayRemaining( );
+                    //_DisplayRemaining( );
                 }
             }
         }
@@ -1613,8 +1629,7 @@ bool TrafficManager::_SingleSim( )
     return ( converged > 0 );
 }
 
-bool TrafficManager::Run( )
-{
+bool TrafficManager::Run( ){
     for ( int sim = 0; sim < _total_sims; ++sim ) {
 
         _time = 0;
@@ -1653,7 +1668,7 @@ bool TrafficManager::Run( )
         }
 
         // Empty any remaining packets
-        cout << "Draining remaining packets ..." << endl;
+        //cout << "Draining remaining packets ..." << endl;
         _empty_network = true;
         int empty_steps = 0;
 
@@ -1668,13 +1683,13 @@ bool TrafficManager::Run( )
             }
         }
 
-        while( multi_GPU->drain_queues() ) {
+        while( !multi_GPU->drain_queues() ) {
             //_Step( );
 
             ++empty_steps;
 
             if ( empty_steps % 1000 == 0 ) {
-                _DisplayRemaining( ); 
+                //_DisplayRemaining( );
             }
       
             packets_left = false;
@@ -1683,7 +1698,7 @@ bool TrafficManager::Run( )
             }
         }
         //wait until all the credits are drained as well
-        while(Credit::OutStanding()!=0){
+        while(Credit::OutStanding() != 0){
             //_Step();
             multi_GPU->drain_queues();
         }
@@ -1691,15 +1706,17 @@ bool TrafficManager::Run( )
 
         //for the love of god don't ever say "Time taken" anywhere else
         //the power script depend on it
-        cout << "Interconnect Time taken is " << _time << " cycles" <<endl;
-        std::cout << "GPU Time taken is " << multi_GPU->get_gpu_cycle() << " cycles" << std::endl;
         if(_stats_out) {
-            WriteStats(*_stats_out);
+            WriteStats(*_stats_out, sim);
         }
         _UpdateOverallStats();
     }
-  
-    DisplayOverallStats();
+
+    gettimeofday(&end_time, NULL);
+    total_time = ((double) (end_time.tv_sec) + (double) (end_time.tv_usec) / 1000000.0)
+                 - ((double) (start_time.tv_sec) + (double) (start_time.tv_usec) / 1000000.0);
+
+    DisplayOverallStats(*_stats_out);  // The average statistics
     if(_print_csv_results) {
         DisplayOverallStatsCSV();
     }
@@ -1723,7 +1740,14 @@ void TrafficManager::_UpdateOverallStats() {
         _overall_min_flat[c] += _flat_stats[c]->Min();
         _overall_avg_flat[c] += _flat_stats[c]->Average();
         _overall_max_flat[c] += _flat_stats[c]->Max();
-    
+
+        gpu_min_sim_time[c] += gpu_sim_time[c]->Min();
+        gpu_max_sim_time[c] += gpu_sim_time[c]->Max();
+        gpu_avg_sim_time[c] += gpu_sim_time[c]->Average();
+        icnt_min_sim_time[c] += icnt_sim_time[c]->Min();
+        icnt_max_sim_time[c] += icnt_sim_time[c]->Max();
+        icnt_avg_sim_time[c] += icnt_sim_time[c]->Average();
+
         _overall_min_frag[c] += _frag_stats[c]->Min();
         _overall_avg_frag[c] += _frag_stats[c]->Average();
         _overall_max_frag[c] += _frag_stats[c]->Max();
@@ -1793,16 +1817,16 @@ void TrafficManager::_UpdateOverallStats() {
     }
 }
 
-void TrafficManager::WriteStats(ostream & os) const {
+void TrafficManager::WriteStats(ostream & os, int turn) const {
   
-    os << "%=================================" << endl;
+    os << "%=================RUN "<< turn << "================" << endl;
 
     for(int c = 0; c < _classes; ++c) {
     
         if(_measure_stats[c] == 0) {
             continue;
         }
-    
+        DisplayStats(os);
         //c+1 due to matlab array starting at 1
         os << "plat(" << c+1 << ") = " << _plat_stats[c]->Average() << ";" << endl
            << "plat_hist(" << c+1 << ",:) = " << *_plat_stats[c] << ";" << endl
@@ -1875,6 +1899,8 @@ void TrafficManager::WriteStats(ostream & os) const {
             os << (double)_accepted_flits[c][d] / (double)_accepted_packets[c][d] << " ";
         }
         os << "];" << endl;
+        os << "Interconnect Time taken is " << _time << " cycles" <<endl;
+        os << "GPU Time taken is " << multi_GPU->get_gpu_cycle() << " cycles" << std::endl << std::endl;
 #ifdef TRACK_STALLS
         os << "buffer_busy_stalls(" << c+1 << ",:) = [ ";
         for ( int d = 0; d < _subnets*_routers; ++d ) {
@@ -1990,9 +2016,9 @@ void TrafficManager::DisplayStats(ostream & os) const {
             continue;
         }
     
-        cout << "Class " << c << ":" << endl;
+        os << "Class " << c << ":" << endl;
     
-        cout 
+        os
             << "Packet latency average = " << _plat_stats[c]->Average() << endl
             << "\tminimum = " << _plat_stats[c]->Min() << endl
             << "\tmaximum = " << _plat_stats[c]->Max() << endl
@@ -2020,7 +2046,7 @@ void TrafficManager::DisplayStats(ostream & os) const {
         rate_max = (double)count_max / time_delta;
         rate_avg = rate_sum / (double)_nodes;
         sent_packets = count_sum;
-        cout << "Injected packet rate average = " << rate_avg << endl
+        os << "Injected packet rate average = " << rate_avg << endl
              << "\tminimum = " << rate_min 
              << " (at node " << min_pos << ")" << endl
              << "\tmaximum = " << rate_max
@@ -2031,7 +2057,7 @@ void TrafficManager::DisplayStats(ostream & os) const {
         rate_max = (double)count_max / time_delta;
         rate_avg = rate_sum / (double)_nodes;
         accepted_packets = count_sum;
-        cout << "Accepted packet rate average = " << rate_avg << endl
+        os << "Accepted packet rate average = " << rate_avg << endl
              << "\tminimum = " << rate_min 
              << " (at node " << min_pos << ")" << endl
              << "\tmaximum = " << rate_max
@@ -2042,7 +2068,7 @@ void TrafficManager::DisplayStats(ostream & os) const {
         rate_max = (double)count_max / time_delta;
         rate_avg = rate_sum / (double)_nodes;
         sent_flits = count_sum;
-        cout << "Injected flit rate average = " << rate_avg << endl
+        os << "Injected flit rate average = " << rate_avg << endl
              << "\tminimum = " << rate_min 
              << " (at node " << min_pos << ")" << endl
              << "\tmaximum = " << rate_max
@@ -2053,16 +2079,16 @@ void TrafficManager::DisplayStats(ostream & os) const {
         rate_max = (double)count_max / time_delta;
         rate_avg = rate_sum / (double)_nodes;
         accepted_flits = count_sum;
-        cout << "Accepted flit rate average= " << rate_avg << endl
+        os << "Accepted flit rate average= " << rate_avg << endl
              << "\tminimum = " << rate_min 
              << " (at node " << min_pos << ")" << endl
              << "\tmaximum = " << rate_max
              << " (at node " << max_pos << ")" << endl;
     
-        cout << "Injected packet length average = " << (double)sent_flits / (double)sent_packets << endl
+        os << "Injected packet length average = " << (double)sent_flits / (double)sent_packets << endl
              << "Accepted packet length average = " << (double)accepted_flits / (double)accepted_packets << endl;
 
-        cout << "Total in-flight flits = " << _total_in_flight_flits[c].size()
+        os << "Total in-flight flits = " << _total_in_flight_flits[c].size()
              << " (" << _measured_in_flight_flits[c].size() << " measured)"
              << endl;
     
@@ -2167,6 +2193,11 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
     
         os << "Hops average = " << _overall_hop_stats[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
+        os << "Average GPU simulated time " << gpu_avg_sim_time[c] / (double)_total_sims
+                << " (" << _total_sims << " samples)" << endl;
+        os << "Average NoC simulated time " << icnt_avg_sim_time[c] / (double)_total_sims
+                << " (" << _total_sims << " samples)" << endl;
+        os << "Total run time " << total_time << " seconds" << endl;
     
 #ifdef TRACK_STALLS
         os << "Buffer busy stall rate = " << (double)_overall_buffer_busy_stalls[c] / (double)_total_sims
@@ -2185,8 +2216,7 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
   
 }
 
-string TrafficManager::_OverallStatsCSV(int c) const
-{
+string TrafficManager::_OverallStatsCSV(int c) const{
     ostringstream os;
     os << _traffic[c]
        << ',' << _use_read_write[c]
@@ -2259,8 +2289,7 @@ void TrafficManager::_LoadWatchList(const string & filename){
     }
 }
 
-int TrafficManager::_GetNextPacketSize(int cl) const
-{
+int TrafficManager::_GetNextPacketSize(int cl) const{
     assert(cl >= 0 && cl < _classes);
 
     vector<int> const & psize = _packet_size[cl];
@@ -2287,8 +2316,7 @@ int TrafficManager::_GetNextPacketSize(int cl) const
     return psize.back();
 }
 
-double TrafficManager::_GetAveragePacketSize(int cl) const
-{
+double TrafficManager::_GetAveragePacketSize(int cl) const{
     vector<int> const & psize = _packet_size[cl];
     int sizes = psize.size();
     if(sizes == 1) {
@@ -2300,4 +2328,23 @@ double TrafficManager::_GetAveragePacketSize(int cl) const
         sum += psize[i] * prate[i];
     }
     return (double)sum / (double)(_packet_size_max_val[cl] + 1);
+}
+
+bool TrafficManager::check_if_any_packet_to_drain() {
+    bool flag = false;
+
+    for(int sub = 0; sub < this->_subnets; ++sub){
+        for(int n = 0; n < this->_nodes; ++n){
+            for(int vc = 0; vc < this->_vcs; ++vc) {
+                for (int cl = 0; cl < _classes; ++cl) {
+                    if (_partial_packets[sub][n][cl].empty() && _total_in_flight_flits[cl].empty()) {
+                            flag = true;
+                            //return flag;
+                    }
+                    std::cout << _partial_packets[sub][n][cl].size() << "\t" << _total_in_flight_flits[cl].size() << std::endl;
+                }
+            }
+        }
+    }
+    return flag;
 }

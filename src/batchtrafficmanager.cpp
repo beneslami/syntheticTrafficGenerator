@@ -33,11 +33,8 @@
 #include "random_utils.hpp"
 #include "batchtrafficmanager.hpp"
 
-BatchTrafficManager::BatchTrafficManager( const Configuration &config, 
-					  const vector<Network *> & net )
-: TrafficManager(config, net), _last_id(-1), _last_pid(-1), 
-   _overall_min_batch_time(0), _overall_avg_batch_time(0), 
-   _overall_max_batch_time(0)
+BatchTrafficManager::BatchTrafficManager( const Configuration &config, const vector<Network *> & net, std::string stats )
+: TrafficManager(config, net, stats), _last_id(-1), _last_pid(-1), _overall_min_batch_time(0), _overall_avg_batch_time(0), _overall_max_batch_time(0)
 {
 
   _max_outstanding = config.GetInt ("max_outstanding_requests");  
