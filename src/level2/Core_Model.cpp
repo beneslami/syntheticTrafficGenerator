@@ -23,10 +23,18 @@ void Core_Model::set_processing_delay(RandomGenerator::CustomDistribution *dist)
     this->processing_delay_dist = dist;
 }
 
-int Core_Model::get_destination(){
+void Core_Model::set_packet_type_dist(std::map<int, RandomGenerator::CustomDistribution*>dist) {
+    this->packet_type_dist = dist;
+}
+
+int Core_Model::generate_destination(){
     return this->destination_dist->Generate();
 }
 
-int Core_Model::get_processing_delay(){
+int Core_Model::generate_processing_delay(){
     return this->processing_delay_dist->Generate();
+}
+
+int Core_Model::generate_packet_type(int chip) {
+    return this->packet_type_dist[chip]->Generate();
 }

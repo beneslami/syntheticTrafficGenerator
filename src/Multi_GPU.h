@@ -10,10 +10,13 @@
 #include <queue>
 #include <map>
 #include <cmath>
+#include <sstream>
+#include <algorithm>
 #include "flit.hpp"
 #include "networks/network.hpp"
 #include "booksim_config.hpp"
 #include "trafficmanager.hpp"
+#include "stats.hpp"
 
 #if LEVEL == leve1
 #include "level1/Traffic_Model.h"
@@ -43,9 +46,10 @@ typedef struct mem_fetch{
     int interval;
 }mem_fetch;
 
-class Multi_GPU : public TrafficManager{
+class Multi_GPU {
 private:
     int gpu_cycle;
+    static int id_counter;
     double core_freq = 1132.0;
     double icnt_freq = 3277.0;
     double icnt_freq_chLet;             // Ring : 5625 for NVLink4 , 3750 for NVLink3, 1875 for NVLink2, 1000 for NVLink1
@@ -67,6 +71,10 @@ private:
     int subnet;
     int nodes;
     int vcs;
+
+    std::vector<int>sum_throughput;
+    int sum_tot_throughput;
+    int iteration;
 
     int burst_duration;
     int burst_volume;
@@ -94,12 +102,14 @@ private:
     };
     typedef queue<Flit*> _EjectionBufferItem;
 
+    std::vector<Stats*>throughput_per_chip;
+    Stats *total_throughput;
     std::vector<int>byteArray;
     std::vector<queue<mem_fetch *> > _pending_reply;
     std::vector<vector<vector<_BoundaryBufferItem> > > _boundary_buffer;
-    vector<vector<vector<_EjectionBufferItem> > > _ejection_buffer;
+    std::vector<vector<vector<_EjectionBufferItem> > > _ejection_buffer;
     std::vector<vector<queue<Flit* > > > _ejected_flit_queue;
-    std::vector<vector<int> >_round_robin_turn;
+    std::vector<std::vector<int> >_round_robin_turn;
     std::map<int, std::vector<mem_fetch*> >_processing_queue;
     double IcntToCoreRatio;
     void byte_spread_within_burst(int, int);
@@ -111,7 +121,9 @@ public:
     void init(BookSimConfig const & config);
     void run();
     void icnt_push(int, int, mem_fetch*);
+    mem_fetch *generate_packet(int, int, int, int);
     mem_fetch *icnt_pop(int, int);
+    void reset();
     void processing_queue_pop(int);
     void WriteOutBuffer(int, int, Flit*);
     void boundaryBufferTransfer(int, int);
@@ -130,6 +142,9 @@ public:
     int next_clock_domain();
     int get_gpu_cycle();
     void reinit_clock_domains();
+    void add_throughput(int, int);
+    void print_throughput(ostream &os = cout);
+    void print_overall_throughput(ostream &os = cout);
     int get_input_buffer_capacity(){ return input_buffer_capacity; }
     int get_ejection_buffer_capacity(){ return ejection_buffer_capacity; }
     Flit *GetEjectedFlit(int , int);

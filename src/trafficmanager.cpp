@@ -616,9 +616,6 @@ TrafficManager::TrafficManager( const Configuration &config, const vector<Networ
     _slowest_packet.resize(_classes, -1);
 }
 
-TrafficManager::TrafficManager(): Module( 0, "traffic_manager" ) {
-
-}
 
 TrafficManager::~TrafficManager( ){
     for ( int source = 0; source < _nodes; ++source ) {
@@ -1710,6 +1707,9 @@ bool TrafficManager::Run( ){
             WriteStats(*_stats_out, sim);
         }
         _UpdateOverallStats();
+        multi_GPU->update_throughput();
+
+        multi_GPU->reset();
     }
 
     gettimeofday(&end_time, NULL);
@@ -1899,6 +1899,10 @@ void TrafficManager::WriteStats(ostream & os, int turn) const {
             os << (double)_accepted_flits[c][d] / (double)_accepted_packets[c][d] << " ";
         }
         os << "];" << endl;
+
+        os << "---throughput---\n";
+        multi_GPU->print_throughput(os);
+
         os << "Interconnect Time taken is " << _time << " cycles" <<endl;
         os << "GPU Time taken is " << multi_GPU->get_gpu_cycle() << " cycles" << std::endl << std::endl;
 #ifdef TRACK_STALLS
@@ -2190,7 +2194,9 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
 
         os << "Accepted packet size average = " << _overall_avg_accepted[c] / _overall_avg_accepted_packets[c]
            << " (" << _total_sims << " samples)" << endl;
-    
+
+        multi_GPU->print_overall_throughput(os);
+
         os << "Hops average = " << _overall_hop_stats[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
         os << "Average GPU simulated time " << gpu_avg_sim_time[c] / (double)_total_sims
@@ -2330,6 +2336,10 @@ double TrafficManager::_GetAveragePacketSize(int cl) const{
     return (double)sum / (double)(_packet_size_max_val[cl] + 1);
 }
 
+int TrafficManager::get_partial_packet_occupancy(int subnet, int source, int cl){
+    return this->_partial_packets[subnet][source][cl].size();
+}
+
 bool TrafficManager::check_if_any_packet_to_drain() {
     bool flag = false;
 
@@ -2339,9 +2349,8 @@ bool TrafficManager::check_if_any_packet_to_drain() {
                 for (int cl = 0; cl < _classes; ++cl) {
                     if (_partial_packets[sub][n][cl].empty() && _total_in_flight_flits[cl].empty()) {
                             flag = true;
-                            //return flag;
+                            return flag;
                     }
-                    std::cout << _partial_packets[sub][n][cl].size() << "\t" << _total_in_flight_flits[cl].size() << std::endl;
                 }
             }
         }

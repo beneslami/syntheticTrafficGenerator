@@ -158,6 +158,7 @@ protected:
     vector<double> gpu_min_sim_time;
     vector<double> gpu_max_sim_time;
     vector<double> gpu_avg_sim_time;
+
     vector<Stats *> icnt_sim_time;
     vector<double> icnt_min_sim_time;
     vector<double> icnt_max_sim_time;
@@ -288,13 +289,13 @@ protected:
 
     void _Inject();
 
-    void _Step();
+
 
     bool _PacketsOutstanding() const;
 
     virtual int _IssuePacket(int source, int cl);
 
-    void _GeneratePacket(int source, int size, int destination, Flit::FlitType, int subnet, int cl, int time, void* const data );
+
 
     virtual void _ClearStats();
 
@@ -315,15 +316,16 @@ protected:
 
     double _GetAveragePacketSize(int cl) const;
 
-    bool check_if_any_packet_to_drain();
-
 public:
 
     static TrafficManager *New(Configuration const &config, vector<Network *> const &net, std::string stats_out);
 
     TrafficManager(Configuration const &config, vector<Network *> const &net, std::string stats_out);
-    TrafficManager();
+    void _GeneratePacket(int source, int size, int destination, Flit::FlitType, int subnet, int cl, int time, void* const data );
+    bool check_if_any_packet_to_drain();
+    int get_partial_packet_occupancy(int, int, int);
 
+    void _Step();
     virtual ~TrafficManager();
 
     bool Run();

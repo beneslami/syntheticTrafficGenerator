@@ -6,11 +6,13 @@
 #define SYNTHETICTRAFFICGENERATOR_CORE_MODEL_H
 
 #include "../RandomGenerator.h"
+#include <map>
 
 class Core_Model {
 private:
     int id;
     RandomGenerator::CustomDistribution *destination_dist;
+    std::map<int, RandomGenerator::CustomDistribution*>packet_type_dist;
     RandomGenerator::CustomDistribution *processing_delay_dist;
 public:
     Core_Model(int);
@@ -18,8 +20,10 @@ public:
     int get_id();
     void set_destination_dist(RandomGenerator::CustomDistribution*);
     void set_processing_delay(RandomGenerator::CustomDistribution*);
-    int get_destination();
-    int get_processing_delay();
+    void set_packet_type_dist(std::map<int, RandomGenerator::CustomDistribution*>);
+    int generate_destination();
+    int generate_processing_delay();
+    int generate_packet_type(int);
 };
 
 
