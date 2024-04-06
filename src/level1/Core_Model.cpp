@@ -19,6 +19,7 @@ int Core_Model::get_id(){
 void Core_Model::set_destination_dist(RandomGenerator::CustomDistribution *dist){
     this->destination_dist = dist;
 }
+
 void Core_Model::set_processing_delay(RandomGenerator::CustomDistribution *dist){
     this->processing_delay_dist = dist;
 }
@@ -37,4 +38,20 @@ int Core_Model::generate_processing_delay(){
 
 int Core_Model::generate_packet_type(int chip) {
     return this->packet_type_dist[chip]->Generate();
+}
+
+void Core_Model::show_model() {
+    std::cout << "----- chip " << this->id << std::endl;
+    std::cout << "destination distribution:\n";
+    this->destination_dist->show_cdf();
+    std::cout << "\n";
+    std::cout << "packet type distribution:\n";
+    std::map<int, RandomGenerator::CustomDistribution*>::iterator it;
+    for(it = this->packet_type_dist.begin(); it != this->packet_type_dist.end(); ++it){
+        std::cout << "destination " << it->first << "\n";
+        it->second->show_cdf();
+    }
+    std::cout << "\n";
+    std::cout << "access latency distribution\n";
+    this->processing_delay_dist->show_cdf();
 }

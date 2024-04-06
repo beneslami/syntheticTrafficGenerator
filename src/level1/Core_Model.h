@@ -23,6 +23,7 @@ public:
     int generate_destination();
     int generate_processing_delay();
     int generate_packet_type(int);
+    void show_model();
 };
 
 

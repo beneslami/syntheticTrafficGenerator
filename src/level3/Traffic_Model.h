@@ -10,11 +10,13 @@
 #include "Spatial_Locality.h"
 #include <fstream>
 #include <string>
+#include <queue>
 
 class Traffic_Model {
 private:
     int cycle;
     std::string traffic_model_path;
+    std::string trace_file_path;
     class Temporal_Locality *request_temporal_locality;
     class Temporal_Locality *reply_temporal_locality;
     class Spatial_Locality *spatial_locality;
@@ -26,9 +28,13 @@ public:
     int generate_off_cycle(std::string);
     int generate_burst_duration(std::string);
     int generate_burst_volume(std::string, int);
-    void show_model(std::string);
+    void show_temporal_model(std::string);
+    void show_spatial_model(std::string);
     int get_cycle();
     Spatial_Locality *get_spatial_locality();
+    int return_kernel_num(std::string);
+    void init(int);
+    void reinint();
 };
 
 #endif //B_OOKSIM2_TRAFFC_MODEL_H

@@ -105,6 +105,8 @@ void Multi_GPU::set_link_frequency(std::string topo, int nvlink){
                 this->icnt_freq_chLet = -1;
         }
     }
+    this->reinit_clock_domains();
+    this->init_clock_domains();
     this->IcntToCoreRatio = (double)(this->icnt_freq_chLet)/(this->core_freq);
 }
 
@@ -150,8 +152,6 @@ void Multi_GPU::init(BookSimConfig const & config){
     this->boundary_buffer_capacity = config.GetInt("boundary_buffer_size");
     this->processing_buffer_capacity = config.GetInt("processing_buffer_size");
     this->input_buffer_capacity = config.GetInt("input_buffer_size");
-    reinit_clock_domains();
-    init_clock_domains();
     this->gpu_cycle = 0;
 }
 
@@ -177,7 +177,7 @@ void Multi_GPU::reinit_clock_domains(){
 }
 
 int Multi_GPU::next_clock_domain() {
-    double smallest = min4(core_time, icnt_time, icnt_chLet_time, dram_time); //20220820 Shiqing
+    double smallest = min4(core_time, icnt_time, icnt_chLet_time, dram_time);
     int mask = 0x00;
     if (l2_time <= smallest) {
         smallest = l2_time;
@@ -262,6 +262,7 @@ void Multi_GPU::process_request(int input, mem_fetch *mf) {
         size = 8;
     }
     mem_fetch *reply_mf = this->generate_packet(mf->dest, mf->src, size, 1);
+    reply_mf->id = mf->id;
     reply_mf->processing_time = processing_delay;
     reply_mf->timestamp = this->gpu_cycle;
     this->_processing_queue[chip].push_back(reply_mf);
@@ -278,7 +279,7 @@ void Multi_GPU::set_boundary_buffer_capacity(int chiplet){
 }
 
 void Multi_GPU::pending_reply_push(int chiplet, mem_fetch *mf) {
-    assert(_pending_reply[chiplet].size() < pending_reply_capacity);
+    //assert(_pending_reply[chiplet].size() < pending_reply_capacity);
     _pending_reply[chiplet].push(mf);
 }
 
@@ -289,7 +290,8 @@ void Multi_GPU::pending_reply_pop(int chiplet){
 
 mem_fetch* Multi_GPU::pending_reply_front(int chiplet){
     assert(_pending_reply[chiplet].size() > 0);
-    return _pending_reply[chiplet].front();
+    mem_fetch *mf = _pending_reply[chiplet].front();
+    return mf;
 }
 
 void Multi_GPU::icnt_push(int src, int dest, mem_fetch *mf){
@@ -332,21 +334,18 @@ Flit* Multi_GPU::GetEjectedFlit(int subnet, int node){
 }
 
 void Multi_GPU::processing_queue_pop(int chiplet){
-    std::stack<int>stack;
-    mem_fetch *mf = NULL, *return_mf = NULL;
+    mem_fetch *return_mf = NULL;
     std::map<int, std::vector<mem_fetch*> >::iterator it = _processing_queue.find(chiplet);
     if(it != _processing_queue.end()){
         assert(chiplet == it->first);
         std::vector<mem_fetch*>::iterator it2;
         for(it2 = it->second.begin(); it2 != it->second.end(); ++it2) {
-            mf = *it2;
-            if (this->gpu_cycle - mf->timestamp >= mf->processing_time) {
-                return_mf = mf;
+            return_mf = *it2;
+            if (this->gpu_cycle - return_mf->timestamp >= return_mf->processing_time) {
                 if(1/*TODO !pending_reply_isFull(chiplet)*/){
                     pending_reply_push(chiplet, return_mf);
-                    std::vector<mem_fetch*>::iterator it = std::find(_processing_queue[chiplet].begin(), _processing_queue[chiplet].end(), mf);
-                    int index = std::distance(_processing_queue[chiplet].begin(), it);
-                    this->_processing_queue[chiplet].erase(this->_processing_queue[chiplet].begin(), this->_processing_queue[chiplet].begin() + index);
+                    this->_processing_queue[chiplet].erase(std::remove(this->_processing_queue[chiplet].begin(), this->_processing_queue[chiplet].end(), return_mf), this->_processing_queue[chiplet].end());
+
                     break;
                 }
             }
@@ -362,8 +361,7 @@ int Multi_GPU::get_received_queue_occupancy(int subnet, int node){
     return occupancy;
 }
 
-void Multi_GPU::_BoundaryBufferItem::PushFlitData(void* data,bool is_tail)
-{
+void Multi_GPU::_BoundaryBufferItem::PushFlitData(void* data,bool is_tail){
     _buffer.push(data);
     _tail_flag.push(is_tail);
     if (is_tail) {
@@ -411,17 +409,18 @@ mem_fetch *Multi_GPU::generate_packet(int src, int dst, int size, int subnet){
         }
         else {
             mf->type = Flit::READ_REQUEST;
+            mf->id = Multi_GPU::id_counter++;
         }
     }
     else{
         if(subnet == 1){
-            mf->type = Flit::WRITE_REPLY;
+            mf->type = Flit::READ_REPLY;
         }
         else {
             mf->type = Flit::WRITE_REQUEST;
+            mf->id = Multi_GPU::id_counter++;
         }
     }
-    mf->id = Multi_GPU::id_counter++;
     return mf;
 }
 
@@ -443,13 +442,14 @@ void Multi_GPU::print_throughput(ostream &os) {
 
 void Multi_GPU::print_overall_throughput(ostream &os){
     for(int i = 0; i < this->nodes; ++i) {
-        os << "GPU " << i << " average throughput = " << this->sum_throughput[i] / this->iteration << std::endl;
+        os << "GPU " << i << " average throughput = " << (double)this->sum_throughput[i] / this->iteration << std::endl;
     }
-    os << "total average throughput = " << this->sum_tot_throughput / this->iteration << std::endl;
+    os << "total average throughput = " << (double)this->sum_tot_throughput / this->iteration << std::endl;
 }
 
 bool Multi_GPU::drain_queues() {
     bool flag = false;
+
     while(!flag){
         int clock_mask = next_clock_domain();
 
@@ -465,7 +465,8 @@ bool Multi_GPU::drain_queues() {
                                                    << "\tsize: "
                                                    << mf->size << "\tq: " << get_received_queue_occupancy(subnet, chip)
                                                    << std::endl;
-                            this->add_throughput(chip, mf->size);
+                            this->throughput_per_chip[chip]->AddSample(mf->size);
+                            this->total_throughput->AddSample(mf->size);
                             delete mf;
                             mf = NULL;
                         } else {
@@ -474,6 +475,8 @@ bool Multi_GPU::drain_queues() {
                                                    << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
                                                    << "\tsize: " << mf->size << "\tq: "
                                                    << get_received_queue_occupancy(subnet, chip) << std::endl;
+                            this->throughput_per_chip[chip]->AddSample(mf->size);
+                            this->total_throughput->AddSample(mf->size);
                             process_request(chip, mf);
                         }
                     }
@@ -533,16 +536,16 @@ bool Multi_GPU::drain_queues() {
             this->gpu_cycle++;
         }
 
+        flag = true;
         for(int sub = 0; sub < this->subnet; sub++){
             for (int input = 0; input < this->nodes; input++){
                 for(int vc = 0; vc < this->vcs; vc++){
-                    if (!_boundary_buffer[sub][input][vc].HasPacket() &&
-                            _ejected_flit_queue[sub][input].empty() &&
-                            _ejection_buffer[sub][input][vc].empty() &&
-                            _processing_queue[input].empty() &&
-                            _pending_reply[input].empty() && trafficManager->check_if_any_packet_to_drain()) {
-                        flag = true;
-                        return flag;
+                    if (_boundary_buffer[sub][input][vc].HasPacket() &&
+                            !_ejected_flit_queue[sub][input].empty() &&
+                            !_ejection_buffer[sub][input][vc].empty() &&
+                            !_processing_queue[input].empty() &&
+                            !_pending_reply[input].empty() && trafficManager->check_if_any_packet_to_drain()) {
+                        flag = false;
                     }
                 }
             }
@@ -582,6 +585,8 @@ void Multi_GPU::run(){
                                      << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
                                      << "\tsize: " << mf->size << "\tq: "
                                      << get_received_queue_occupancy(subnet, chip) << std::endl;
+                            this->throughput_per_chip[chip]->AddSample(mf->size);
+                            this->total_throughput->AddSample(mf->size);
                             process_request(chip, mf);
                         }
                     }
@@ -637,7 +642,6 @@ void Multi_GPU::run(){
         }
 
         if(clock_mask & CORE){
-            //TODO: request side
             if(burst_state == 1){
                 if(on_state == 0){
                     this->burst_duration = trafficModel->generate_burst_duration("req");
@@ -696,5 +700,16 @@ void Multi_GPU::run(){
 
 void Multi_GPU::byte_spread_within_burst(int length, int volume) {
     this->byteArray.resize(length, 0);
-    //TODO: check if the benchmark is read/write intensive, and based on that, try to fill the array
+    std::vector<int>::iterator it;
+    it = this->byteArray.begin();
+    while(volume > 0){
+        if(it != this->byteArray.end()){
+            *it += 8;
+            ++it;
+            volume -= 8;
+        }
+        else{
+            it = this->byteArray.begin();
+        }
+    }
 }

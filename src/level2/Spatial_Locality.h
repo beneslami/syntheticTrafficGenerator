@@ -20,6 +20,7 @@ public:
     Core_Model *get_core_instance(int);
     void set_source_distribution(RandomGenerator::CustomDistribution*);
     int generate_source();
+    void show_model();
 };
 
 

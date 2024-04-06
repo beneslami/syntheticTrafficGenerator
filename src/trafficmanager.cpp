@@ -861,8 +861,7 @@ void TrafficManager::_GeneratePacket(int source, int stype, int destination, Fli
 
     if ((packet_destination <0) || (packet_destination >= _nodes)) {
         ostringstream err;
-        err << "Incorrect packet destination " << packet_destination
-            << " for stype " << packet_type;
+        err << "Incorrect packet destination " << packet_destination << " for stype " << packet_type << " packet_ID " << static_cast<mem_fetch*>(data)->id;
         Error( err.str( ) );
     }
 
@@ -993,7 +992,7 @@ void TrafficManager::_Step( ){
 
     vector<map<int, Flit *> > flits(_subnets);
   
-    for ( int subnet = 0; subnet < _subnets; ++subnet ) {
+    for(int subnet = 0; subnet < _subnets; ++subnet) {
         for ( int n = 0; n < _nodes; ++n ) {
             Flit * const f = _net[subnet]->ReadFlit( n );
             if ( f ) {
@@ -1059,15 +1058,12 @@ void TrafficManager::_Step( ){
             Flit * f = NULL;
             BufferState * const dest_buf = _buf_states[n][subnet];
             int const last_class = _last_class[n][subnet];
-
             int class_limit = _classes;
-
             if(_hold_switch_for_packet) {
                 list<Flit *> const & pp = _partial_packets[subnet][n][last_class];
                 if(!pp.empty() && !pp.front()->head && !dest_buf->IsFullFor(pp.front()->vc)) {
                     f = pp.front();
                     assert(f->vc == _last_vc[n][subnet][last_class]);
-
                     // if we're holding the connection, we don't need to check that class 
                     // again in the for loop
                     --class_limit;
@@ -1077,7 +1073,6 @@ void TrafficManager::_Step( ){
             for(int i = 1; i <= class_limit; ++i) {
                 int const c = (last_class + i) % _classes;
                 list<Flit *> const & pp = _partial_packets[subnet][n][c];
-
                 if(pp.empty()) {
                     continue;
                 }
@@ -1085,11 +1080,11 @@ void TrafficManager::_Step( ){
                 Flit * const cf = pp.front();
                 assert(cf);
                 assert(cf->cl == c);
-                assert(cf->subnetwork == subnet);
 
-                //if(cf->subnetwork != subnet) {
-                    //continue;
-                //}
+                if(cf->subnetwork != subnet) {
+                    continue;
+                }
+                assert(cf->subnetwork == subnet);
 
                 if(f && (f->pri >= cf->pri)) {
                     continue;
@@ -1098,6 +1093,7 @@ void TrafficManager::_Step( ){
                 if(cf->head && cf->vc == -1) { // Find first available VC
 	  
                     OutputSet route_set;
+                    //cf->cycle = _time;
                     _rf(NULL, cf, -1, &route_set, true);
                     set<OutputSet::sSetElement> const & os = route_set.GetSet();
                     assert(os.size() == 1);
@@ -1192,13 +1188,9 @@ void TrafficManager::_Step( ){
             }
 
             if(f) {
-
                 assert(f->subnetwork == subnet);
-
                 int const c = f->cl;
-
                 if(f->head) {
-	  
                     if (_lookahead_routing) {
                         if(!_noq) {
                             const FlitChannel * inject = _net[subnet]->GetInject(n);
@@ -1221,7 +1213,6 @@ void TrafficManager::_Step( ){
                     } else {
                         f->la_route_set.Clear();
                     }
-
                     dest_buf->TakeBuffer(f->vc);
                     _last_vc[n][subnet][c] = f->vc;
                 }
@@ -1281,7 +1272,6 @@ void TrafficManager::_Step( ){
             map<int, Flit *>::const_iterator iter = flits[subnet].find(n);
             if(iter != flits[subnet].end()) {
                 Flit * const f = iter->second;
-
                 f->atime = _time;
                 if(f->watch) {
                     *gWatchOut << GetSimTime() << " | "
@@ -1311,7 +1301,6 @@ void TrafficManager::_Step( ){
     if(gTrace){
         cout<<"TIME "<<_time<<endl;
     }
-
 }
   
 bool TrafficManager::_PacketsOutstanding( ) const{
@@ -1471,7 +1460,6 @@ bool TrafficManager::_SingleSim( ){
     
         multi_GPU->run(); // Start generating synthetic traffic
         UpdateStats();
-
         //DisplayStats();
     
         int lat_exc_class = -1;
@@ -1540,10 +1528,9 @@ bool TrafficManager::_SingleSim( ){
                 }
             }
         }
-    
+
         // Fail safe for latency mode, throughput will ust continue
         if ( _measure_latency && ( lat_exc_class >= 0 ) ) {
-      
             cout << "Average latency for class " << lat_exc_class << " exceeded " << _latency_thres[lat_exc_class] << " cycles. Aborting simulation." << endl;
             converged = 0; 
             _sim_state = draining;
@@ -1552,12 +1539,11 @@ bool TrafficManager::_SingleSim( ){
                 WriteStats(*_stats_out);
             }
             break;
-      
         }
     
         if ( _sim_state == warming_up ) {
             if (total_phases + 1 >= _warmup_periods) {
-                //cout << "Warmed up ..." <<  "Time used is " << _time << " cycles" <<endl;
+                cout << "Warmed up ..." <<  "Time used is " << _time << " cycles" <<endl;
                 clear_last = true;
                 _sim_state = running;
             }
@@ -1578,7 +1564,6 @@ bool TrafficManager::_SingleSim( ){
     
         _sim_state  = draining;
         _drain_time = _time;
-
         if ( _measure_latency ) {
             //cout << "Draining all recorded packets ..." << endl;
             int empty_steps = 0;
@@ -1619,10 +1604,11 @@ bool TrafficManager::_SingleSim( ){
                 }
             }
         }
-    } else {
+    }
+    else {
         cout << "Too many sample periods needed to converge" << endl;
     }
-  
+
     return ( converged > 0 );
 }
 
@@ -1650,19 +1636,21 @@ bool TrafficManager::Run( ){
         // reset stats, all packets after warmup_time marked
         // converge
         // draing, wait until all packets finish
-        _sim_state    = warming_up;
-  
+        //_sim_state    = warming_up;
+        _sim_state    = running;
+
         _ClearStats( );
 
         for(int c = 0; c < _classes; ++c) {
             _traffic_pattern[c]->reset();
             _injection_process[c]->reset();
         }
-
+        trafficModel->init(sim);
         if ( !_SingleSim( ) ) {
             cout << "Simulation unstable, ending ..." << endl;
             return false;
         }
+        trafficModel->reinint();
 
         // Empty any remaining packets
         //cout << "Draining remaining packets ..." << endl;
@@ -1705,6 +1693,10 @@ bool TrafficManager::Run( ){
         //the power script depend on it
         if(_stats_out) {
             WriteStats(*_stats_out, sim);
+        }
+        for(int i = 0; i < _classes; i++) {
+            this->gpu_sim_time[i]->AddSample(trafficModel->get_cycle());
+            this->icnt_sim_time[i]->AddSample(this->_time);
         }
         _UpdateOverallStats();
         multi_GPU->update_throughput();
@@ -2199,9 +2191,9 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
 
         os << "Hops average = " << _overall_hop_stats[c] / (double)_total_sims
            << " (" << _total_sims << " samples)" << endl;
-        os << "Average GPU simulated time " << gpu_avg_sim_time[c] / (double)_total_sims
+        os << "Average GPU simulated time " << (double)gpu_avg_sim_time[c] / (double)_total_sims
                 << " (" << _total_sims << " samples)" << endl;
-        os << "Average NoC simulated time " << icnt_avg_sim_time[c] / (double)_total_sims
+        os << "Average NoC simulated time " << (double)icnt_avg_sim_time[c] / (double)_total_sims
                 << " (" << _total_sims << " samples)" << endl;
         os << "Total run time " << total_time << " seconds" << endl;
     
@@ -2219,7 +2211,6 @@ void TrafficManager::DisplayOverallStats( ostream & os ) const {
 #endif
     
     }
-  
 }
 
 string TrafficManager::_OverallStatsCSV(int c) const{
@@ -2341,14 +2332,13 @@ int TrafficManager::get_partial_packet_occupancy(int subnet, int source, int cl)
 }
 
 bool TrafficManager::check_if_any_packet_to_drain() {
-    bool flag = false;
-
+    bool flag = true;
     for(int sub = 0; sub < this->_subnets; ++sub){
         for(int n = 0; n < this->_nodes; ++n){
             for(int vc = 0; vc < this->_vcs; ++vc) {
                 for (int cl = 0; cl < _classes; ++cl) {
-                    if (_partial_packets[sub][n][cl].empty() && _total_in_flight_flits[cl].empty()) {
-                            flag = true;
+                    if (!_partial_packets[sub][n][cl].empty() || !_total_in_flight_flits[cl].empty()) {
+                            flag = false;
                             return flag;
                     }
                 }

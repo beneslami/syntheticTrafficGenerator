@@ -142,6 +142,7 @@ public:
     int next_clock_domain();
     int get_gpu_cycle();
     void reinit_clock_domains();
+    void update_throughput();
     void add_throughput(int, int);
     void print_throughput(ostream &os = cout);
     void print_overall_throughput(ostream &os = cout);

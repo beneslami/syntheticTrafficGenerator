@@ -4,19 +4,47 @@
 
 #include "Traffic_Model.h"
 #include "nlohmann/json.hpp"
+#include <sstream>
+#include <queue>
 
 using json = nlohmann::json;
+
+int Traffic_Model::return_kernel_num(std::string path){
+    std::queue<std::string> res;
+    int pos = 0;
+    while(pos < int(path.size())){
+        pos = path.find("/");
+        res.push(path.substr(0,pos));
+        path.erase(0,pos + 1); // 3 is the length of the delimiter, "/"
+    }
+    while(res.size() != 2){
+        res.pop();
+    }
+    std::string result = res.front();
+    return atoi(result.c_str());
+}
 
 Traffic_Model::Traffic_Model(std::string path, std::string output_trace_name) {
     std::cout << "Initializing level3 traffic model " << std::endl;
     this->traffic_model_path = path;
-    outTrace.open(output_trace_name, std::ios::out);
+    this->trace_file_path = output_trace_name;
     this->request_temporal_locality = new class Temporal_Locality();
+    this->spatial_locality = new class Spatial_Locality();
     //TODO: later, add the reply temporal locality
 }
 
 Traffic_Model::~Traffic_Model(){
     delete request_temporal_locality;
+    outTrace.close();
+}
+
+void Traffic_Model::init(int iteration) {
+    std::ostringstream str;
+    str << iteration;
+    outTrace.open(this->trace_file_path + "trace"+ str.str() + ".txt", std::ios::out);
+}
+
+void Traffic_Model::reinint() {
     outTrace.close();
 }
 
@@ -50,12 +78,21 @@ int Traffic_Model::generate_burst_volume(std::string subnet, int duration) {
     return -1;
 }
 
-void Traffic_Model::show_model(std::string type) {
+void Traffic_Model::show_temporal_model(std::string type) {
     if(type == "request" || type == "req") {
         request_temporal_locality->show_model();
     }
     else if(type == "reply" || type == "response" || type == "rep" || type == "resp") {
         reply_temporal_locality->show_model();
+    }
+}
+
+void Traffic_Model::show_spatial_model(std::string type) {
+    if(type == "request" || type == "req") {
+        spatial_locality->show_model();
+    }
+    else if(type == "reply" || type == "response" || type == "rep" || type == "resp") {
+
     }
 }
 
@@ -128,9 +165,54 @@ void Traffic_Model::read_model_file() {
             }
         }
         else if(it.key() == "spatial"){
-            //TODO: do some stuff
-            Core_Model *core = new Core_Model(1);
-            spatial_locality->add_core_instance(core);
+            for (json::iterator it2 = it->begin(); it2 != it->end(); ++it2) {
+                if(it2.key() == "source"){
+                    std::map<int, int>source_dist;
+                    for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
+                        source_dist.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
+                    }
+                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(source_dist);
+                    this->spatial_locality->set_source_distribution(dist);
+                }
+                if(it2.key() == "chip"){
+                    for (json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3) {
+                        int chip = atoi(it3.key().c_str());
+                        Core_Model *core = new Core_Model(chip);
+                        for(json::iterator it4 = it3->begin(); it4 != it3->end(); ++it4){
+                            if(it4.key() == "destination"){
+                                std::map<int, int>dest_dist;
+                                for(json::iterator it5 = it4->begin(); it5 != it4->end(); ++it5){
+                                    dest_dist.insert(std::pair<int, int>(atoi(it5.key().c_str()), atoi(it5.value().dump().c_str())));
+                                }
+                                RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(dest_dist);
+                                core->set_destination_dist(dist);
+                            }
+                            else if(it4.key() == "packet"){
+                                std::map<int, RandomGenerator::CustomDistribution*>packet_dist;
+                                for(json::iterator it5 = it4->begin(); it5 != it4->end(); ++it5){
+                                    int dest_chip = atoi(it5.key().c_str());
+                                    std::map<int, int>packet_temp;
+                                    for(json::iterator it6 = it5->begin(); it6 != it5->end(); ++it6){
+                                        packet_temp.insert(std::pair<int, int>(atoi(it6.key().c_str()), atoi(it6.value().dump().c_str())));
+                                    }
+                                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(packet_temp);
+                                    packet_dist.insert(std::pair<int, RandomGenerator::CustomDistribution*>(dest_chip, dist));
+                                }
+                                core->set_packet_type_dist(packet_dist);
+                            }
+                            else if(it4.key() == "latency"){
+                                std::map<int, int>latency_dist;
+                                for(json::iterator it5 = it4->begin(); it5 != it4->end(); ++it5){
+                                    latency_dist.insert(std::pair<int, int>(atoi(it5.key().c_str()), atoi(it5.value().dump().c_str())));
+                                }
+                                RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(latency_dist);
+                                core->set_processing_delay(dist);
+                            }
+                        }
+                        spatial_locality->add_core_instance(core);
+                    }
+                }
+            }
         }
     }
 }

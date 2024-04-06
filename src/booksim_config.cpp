@@ -230,7 +230,7 @@ BookSimConfig::BookSimConfig() {
     _int_map["warmup_periods"] = 1; // number of samples periods to "warm-up" the simulation
 
     _int_map["sample_period"] = 1000; // how long between measurements
-    _int_map["max_samples"] = 10;   // maximum number of sample periods in a simulation
+    _int_map["max_samples"] = 1;   // maximum number of sample periods in a simulation
 
     // whether or not to measure statistics for a given traffic class
     _int_map["measure_stats"] = 1;
@@ -239,7 +239,7 @@ BookSimConfig::BookSimConfig() {
     _int_map["pair_stats"] = 0;
 
     // if avg. latency exceeds the threshold, assume unstable
-    _float_map["latency_thres"] = 500.0;
+    _float_map["latency_thres"] = 5000.0;
     AddStrField("latency_thres", ""); // workaround to allow for vector specification
 
     // consider warmed up once relative change in latency / throughput between successive iterations is smaller than this
@@ -271,7 +271,7 @@ BookSimConfig::BookSimConfig() {
 
     _int_map["print_csv_results"] = 0;
 
-    _int_map["deadlock_warn_timeout"] = 256;
+    _int_map["deadlock_warn_timeout"] = 256000000;
 
     _int_map["viewer_trace"] = 0;
 

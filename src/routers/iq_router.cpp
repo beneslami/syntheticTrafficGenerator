@@ -314,7 +314,6 @@ bool IQRouter::_ReceiveFlits() {
 #ifdef TRACK_FLOWS
             ++_received_flits[f->cl][input];
 #endif
-
             if (f->watch) {
                 *gWatchOut << GetSimTime() << " | " << FullName() << " | "
                            << "Received flit " << f->id

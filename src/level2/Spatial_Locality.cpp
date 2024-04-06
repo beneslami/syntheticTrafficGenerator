@@ -30,3 +30,13 @@ void Spatial_Locality::set_source_distribution(RandomGenerator::CustomDistributi
 int Spatial_Locality::generate_source(){
     return this->source_distribution->Generate();
 }
+
+void Spatial_Locality::show_model(){
+    std::cout << "source distribution:\n";
+    this->source_distribution->show_cdf();
+    std::vector<Core_Model*>::iterator it;
+    for(it = this->coreArray.begin(); it != this->coreArray.end(); ++it){
+        Core_Model *core = *it;
+        core->show_model();
+    }
+}
