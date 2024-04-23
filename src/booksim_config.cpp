@@ -239,7 +239,7 @@ BookSimConfig::BookSimConfig() {
     _int_map["pair_stats"] = 0;
 
     // if avg. latency exceeds the threshold, assume unstable
-    _float_map["latency_thres"] = 5000.0;
+    _float_map["latency_thres"] = 500000.0;
     AddStrField("latency_thres", ""); // workaround to allow for vector specification
 
     // consider warmed up once relative change in latency / throughput between successive iterations is smaller than this

@@ -253,9 +253,8 @@ void Multi_GPU::process_request(int input, mem_fetch *mf) {
     int processing_delay = dest_chip->generate_processing_delay();
     int size = -1;
     if(mf->type == Flit::READ_REQUEST){
-        size = dest_chip->generate_packet_type(mf->src);
         while(size == 8){
-            size = dest_chip->generate_packet_type(mf->src);
+            size = dest_chip->generate_reply_packet_type(mf->src);
         }
     }
     else{
@@ -657,7 +656,7 @@ void Multi_GPU::run(){
                         //spatial locality stuff is here
                         int src = trafficModel->get_spatial_locality()->generate_source();
                         int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
-                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_packet_type(dst);
+                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
                         if(byte - byte_val >= 0) {
                             mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
                             this->icnt_push(src, dst, mf);
@@ -695,7 +694,7 @@ void Multi_GPU::run(){
             }
             this->gpu_cycle++;
         }
-    }while(this->gpu_cycle <= trafficModel->get_cycle());
+    }while(this->gpu_cycle <= 100000);
 }
 
 void Multi_GPU::byte_spread_within_burst(int length, int volume) {

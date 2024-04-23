@@ -187,7 +187,7 @@ void Traffic_Model::read_model_file() {
                                 RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(dest_dist);
                                 core->set_destination_dist(dist);
                             }
-                            else if(it4.key() == "packet"){
+                            else if(it4.key() == "request_packet"){
                                 std::map<int, RandomGenerator::CustomDistribution*>packet_dist;
                                 for(json::iterator it5 = it4->begin(); it5 != it4->end(); ++it5){
                                     int dest_chip = atoi(it5.key().c_str());
@@ -198,7 +198,20 @@ void Traffic_Model::read_model_file() {
                                     RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(packet_temp);
                                     packet_dist.insert(std::pair<int, RandomGenerator::CustomDistribution*>(dest_chip, dist));
                                 }
-                                core->set_packet_type_dist(packet_dist);
+                                core->set_packet_type_dist(packet_dist, "req");
+                            }
+                            else if(it4.key() == "reply_packet"){
+                                std::map<int, RandomGenerator::CustomDistribution*>packet_dist;
+                                for(json::iterator it5 = it4->begin(); it5 != it4->end(); ++it5){
+                                    int dest_chip = atoi(it5.key().c_str());
+                                    std::map<int, int>packet_temp;
+                                    for(json::iterator it6 = it5->begin(); it6 != it5->end(); ++it6){
+                                        packet_temp.insert(std::pair<int, int>(atoi(it6.key().c_str()), atoi(it6.value().dump().c_str())));
+                                    }
+                                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(packet_temp);
+                                    packet_dist.insert(std::pair<int, RandomGenerator::CustomDistribution*>(dest_chip, dist));
+                                }
+                                core->set_packet_type_dist(packet_dist, "rep");
                             }
                             else if(it4.key() == "latency"){
                                 std::map<int, int>latency_dist;
