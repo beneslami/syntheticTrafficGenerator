@@ -40,6 +40,7 @@
 #include <queue>
 #include <cassert>
 
+#include "flit.hpp"
 #include "globals.hpp"
 #include "module.hpp"
 #include "timed_module.hpp"

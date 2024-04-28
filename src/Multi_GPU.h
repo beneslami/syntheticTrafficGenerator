@@ -72,8 +72,8 @@ private:
     int nodes;
     int vcs;
 
-    std::vector<int>sum_throughput;
-    int sum_tot_throughput;
+    std::vector<double>sum_throughput;
+    double sum_tot_throughput;
     int iteration;
 
     int burst_duration;

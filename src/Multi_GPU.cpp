@@ -431,19 +431,19 @@ void Multi_GPU::add_throughput(int chip, int size) {
 void Multi_GPU::print_throughput(ostream &os) {
     for(int i = 0; i < this->nodes; ++i) {
         os << "GPU " << i << "\n"
-           << "average throughput = " << this->throughput_per_chip[i]->Average() << std::endl
+           << "average throughput = " << (double)this->throughput_per_chip[i]->Average() << std::endl
            << "max throughput = " << this->throughput_per_chip[i]->Max() << std::endl
-           << "variance = " << this->throughput_per_chip[i]->Variance() << std::endl << std::endl;
+           << "variance = " << (double)this->throughput_per_chip[i]->Variance() << std::endl << std::endl;
     }
-    os << "total average throughput = " << this->total_throughput->Average() << std::endl
-       << "total variance throughput = " << this->total_throughput->Variance() << std::endl << std::endl;
+    os << "total average throughput = " << (double)this->total_throughput->Average() << std::endl
+       << "total variance throughput = " << (double)this->total_throughput->Variance() << std::endl << std::endl;
 }
 
 void Multi_GPU::print_overall_throughput(ostream &os){
     for(int i = 0; i < this->nodes; ++i) {
-        os << "GPU " << i << " average throughput = " << (double)this->sum_throughput[i] / this->iteration << std::endl;
+        os << "GPU " << i << " average throughput = " << this->sum_throughput[i] / (double)this->iteration << std::endl;
     }
-    os << "total average throughput = " << (double)this->sum_tot_throughput / this->iteration << std::endl;
+    os << "total average throughput = " << this->sum_tot_throughput / (double)this->iteration << std::endl;
 }
 
 bool Multi_GPU::drain_queues() {
@@ -458,24 +458,24 @@ bool Multi_GPU::drain_queues() {
                     mem_fetch *mf = icnt_pop(subnet, chip);
                     if(mf) {
                         if (mf->type == Flit::READ_REPLY || mf->type == Flit::WRITE_REPLY) {
-                            trafficModel->outTrace << "reply received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
+                            /*trafficModel->outTrace << "reply received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
                                                    << mf->id
                                                    << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
                                                    << "\tsize: "
                                                    << mf->size << "\tq: " << get_received_queue_occupancy(subnet, chip)
                                                    << std::endl;
                             this->throughput_per_chip[chip]->AddSample(mf->size);
-                            this->total_throughput->AddSample(mf->size);
+                            this->total_throughput->AddSample(mf->size);*/
                             delete mf;
                             mf = NULL;
                         } else {
-                            trafficModel->outTrace << "request received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
+                            /*trafficModel->outTrace << "request received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
                                                    << mf->id
                                                    << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
                                                    << "\tsize: " << mf->size << "\tq: "
                                                    << get_received_queue_occupancy(subnet, chip) << std::endl;
                             this->throughput_per_chip[chip]->AddSample(mf->size);
-                            this->total_throughput->AddSample(mf->size);
+                            this->total_throughput->AddSample(mf->size);*/
                             process_request(chip, mf);
                         }
                     }
@@ -497,12 +497,12 @@ bool Multi_GPU::drain_queues() {
                     mem_fetch *mf = pending_reply_front(chip);
                     if(mf){
                         if(1 /*TODO: check if the pacrtial packet is not full*/){
-                            trafficModel->outTrace << "reply injected\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
+                            /*trafficModel->outTrace << "reply injected\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
                                                    << mf->id
                                                    << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: "
                                                    << chip
                                                    << "\tsize: " << mf->size << "\tq: "
-                                                   << trafficManager->get_partial_packet_occupancy(1, chip, 0) << std::endl;
+                                                   << trafficManager->get_partial_packet_occupancy(1, chip, 0) << std::endl;*/
                             icnt_push(mf->src, mf->dest, mf);
                             pending_reply_pop(chip);
                         }
@@ -531,7 +531,7 @@ bool Multi_GPU::drain_queues() {
         }
 
         if(clock_mask & CORE){
-            //no request will be generated in this level.
+            //no request will be generated at this level.
             this->gpu_cycle++;
         }
 
@@ -644,7 +644,7 @@ void Multi_GPU::run(){
             if(burst_state == 1){
                 if(on_state == 0){
                     this->burst_duration = trafficModel->generate_burst_duration("req");
-                    this->burst_volume = trafficModel->generate_burst_volume("req", burst_duration);
+                    this->burst_volume = trafficModel->generate_burst_volume("req", this->burst_duration);
                     this->byte_spread_within_burst(burst_duration, burst_volume);
                     begin_on_cycle = this->gpu_cycle;
                     on_state = 1;
@@ -685,7 +685,7 @@ void Multi_GPU::run(){
                     off_state = 1;
                 }
                 if(off_state == 1){
-                    if(this->gpu_cycle - begin_off_cycle >= this->iat){
+                    if(this->gpu_cycle - begin_off_cycle == this->iat){
                         burst_state = 1;
                         off_state = 0;
                         on_state = 0;
@@ -694,7 +694,7 @@ void Multi_GPU::run(){
             }
             this->gpu_cycle++;
         }
-    }while(this->gpu_cycle <= 100000);
+    }while(this->gpu_cycle <= trafficModel->get_cycle());
 }
 
 void Multi_GPU::byte_spread_within_burst(int length, int volume) {
