@@ -182,6 +182,7 @@ namespace RandomGenerator {
                 return false;
             }
         }
+
         int size(){
             return this->cdf.size();
         }
@@ -197,6 +198,18 @@ namespace RandomGenerator {
             }
             return flag;
         }
+
+        int smallest(){
+            int minimum = 1024;
+            std::map<int, int>::iterator it;
+            for(it = distribution.begin(); it != distribution.end(); ++it){
+                if(it->first <= minimum){
+                    minimum = it->first;
+                }
+            }
+            return minimum;
+        }
+
     private:
         std::map<int, int> distribution;
         std::map<int, double> cdf;

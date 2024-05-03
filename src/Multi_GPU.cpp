@@ -253,6 +253,7 @@ void Multi_GPU::process_request(int input, mem_fetch *mf) {
     int processing_delay = dest_chip->generate_processing_delay();
     int size = -1;
     if(mf->type == Flit::READ_REQUEST){
+        size = dest_chip->generate_reply_packet_type(mf->src);
         while(size == 8){
             size = dest_chip->generate_reply_packet_type(mf->src);
         }
@@ -344,7 +345,6 @@ void Multi_GPU::processing_queue_pop(int chiplet){
                 if(1/*TODO !pending_reply_isFull(chiplet)*/){
                     pending_reply_push(chiplet, return_mf);
                     this->_processing_queue[chiplet].erase(std::remove(this->_processing_queue[chiplet].begin(), this->_processing_queue[chiplet].end(), return_mf), this->_processing_queue[chiplet].end());
-
                     break;
                 }
             }
@@ -449,107 +449,107 @@ void Multi_GPU::print_overall_throughput(ostream &os){
 bool Multi_GPU::drain_queues() {
     bool flag = false;
 
-    while(!flag){
-        int clock_mask = next_clock_domain();
+    //while(!flag){
+    int clock_mask = next_clock_domain();
 
-        if(clock_mask & ICNT_chLet){
-            for(int subnet = 0; subnet < this->subnet; ++subnet){
-                for(int chip = 0; chip < this->nodes; ++chip){
-                    mem_fetch *mf = icnt_pop(subnet, chip);
-                    if(mf) {
-                        if (mf->type == Flit::READ_REPLY || mf->type == Flit::WRITE_REPLY) {
-                            /*trafficModel->outTrace << "reply received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
-                                                   << mf->id
-                                                   << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
-                                                   << "\tsize: "
-                                                   << mf->size << "\tq: " << get_received_queue_occupancy(subnet, chip)
-                                                   << std::endl;
-                            this->throughput_per_chip[chip]->AddSample(mf->size);
-                            this->total_throughput->AddSample(mf->size);*/
-                            delete mf;
-                            mf = NULL;
-                        } else {
-                            /*trafficModel->outTrace << "request received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
-                                                   << mf->id
-                                                   << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
-                                                   << "\tsize: " << mf->size << "\tq: "
-                                                   << get_received_queue_occupancy(subnet, chip) << std::endl;
-                            this->throughput_per_chip[chip]->AddSample(mf->size);
-                            this->total_throughput->AddSample(mf->size);*/
-                            process_request(chip, mf);
-                        }
-                    }
-                }
-            }
-        }
-
-        if(clock_mask & CORE){
-            // pop from m_response_fifo. the packet is already in the chiplet
-        }
-
-        if(clock_mask & ICNT){
-            // local transactions from LLC to cluster
-        }
-
-        if(clock_mask & ICNT_chLet){
+    if(clock_mask & ICNT_chLet){
+        for(int subnet = 0; subnet < this->subnet; ++subnet){
             for(int chip = 0; chip < this->nodes; ++chip){
-                if(!pending_reply_isEmpty(chip)){
-                    mem_fetch *mf = pending_reply_front(chip);
-                    if(mf){
-                        if(1 /*TODO: check if the pacrtial packet is not full*/){
-                            /*trafficModel->outTrace << "reply injected\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
-                                                   << mf->id
-                                                   << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: "
-                                                   << chip
-                                                   << "\tsize: " << mf->size << "\tq: "
-                                                   << trafficManager->get_partial_packet_occupancy(1, chip, 0) << std::endl;*/
-                            icnt_push(mf->src, mf->dest, mf);
-                            pending_reply_pop(chip);
-                        }
-                    }
-                }
-            }
-        }
-
-        if(clock_mask & DRAM){
-            // DRAM transactions happen here
-        }
-
-        if(clock_mask & L2){
-            // pop remote request from the queue
-            for(int input = 0; input < this->nodes; input++){
-                processing_queue_pop(input);
-            }
-        }
-
-        if(clock_mask & ICNT){
-            // internal interconnect
-        }
-
-        if(clock_mask & ICNT_chLet){
-            trafficManager->_Step();
-        }
-
-        if(clock_mask & CORE){
-            //no request will be generated at this level.
-            this->gpu_cycle++;
-        }
-
-        flag = true;
-        for(int sub = 0; sub < this->subnet; sub++){
-            for (int input = 0; input < this->nodes; input++){
-                for(int vc = 0; vc < this->vcs; vc++){
-                    if (_boundary_buffer[sub][input][vc].HasPacket() &&
-                            !_ejected_flit_queue[sub][input].empty() &&
-                            !_ejection_buffer[sub][input][vc].empty() &&
-                            !_processing_queue[input].empty() &&
-                            !_pending_reply[input].empty() && trafficManager->check_if_any_packet_to_drain()) {
-                        flag = false;
+                mem_fetch *mf = icnt_pop(subnet, chip);
+                if(mf) {
+                    if (mf->type == Flit::READ_REPLY || mf->type == Flit::WRITE_REPLY) {
+                        trafficModel->outTrace << "reply received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
+                                               << mf->id
+                                               << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
+                                               << "\tsize: "
+                                               << mf->size << "\tq: " << get_received_queue_occupancy(subnet, chip)
+                                               << std::endl;
+                        this->throughput_per_chip[chip]->AddSample(mf->size);
+                        this->total_throughput->AddSample(mf->size);
+                        delete mf;
+                        mf = NULL;
+                    } else {
+                        trafficModel->outTrace << "request received\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
+                                               << mf->id
+                                               << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
+                                               << "\tsize: " << mf->size << "\tq: "
+                                               << get_received_queue_occupancy(subnet, chip) << std::endl;
+                        this->throughput_per_chip[chip]->AddSample(mf->size);
+                        this->total_throughput->AddSample(mf->size);
+                        process_request(chip, mf);
                     }
                 }
             }
         }
     }
+
+    if(clock_mask & CORE){
+        // pop from m_response_fifo. the packet is already in the chiplet
+    }
+
+    if(clock_mask & ICNT){
+        // local transactions from LLC to cluster
+    }
+
+    if(clock_mask & ICNT_chLet){
+        for(int chip = 0; chip < this->nodes; ++chip){
+            if(!pending_reply_isEmpty(chip)){
+                mem_fetch *mf = pending_reply_front(chip);
+                if(mf){
+                    if(1 /*TODO: check if the pacrtial packet is not full*/){
+                        trafficModel->outTrace << "reply injected\tsrc: " << mf->src << "\tdst: " << mf->dest << "\tID: "
+                                               << mf->id
+                                               << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: "
+                                               << chip
+                                               << "\tsize: " << mf->size << "\tq: "
+                                               << trafficManager->get_partial_packet_occupancy(1, chip, 0) << std::endl;
+                        icnt_push(mf->src, mf->dest, mf);
+                        pending_reply_pop(chip);
+                    }
+                }
+            }
+        }
+    }
+
+    if(clock_mask & DRAM){
+        // DRAM transactions happen here
+    }
+
+    if(clock_mask & L2){
+        // pop remote request from the queue
+        for(int input = 0; input < this->nodes; input++){
+            processing_queue_pop(input);
+        }
+    }
+
+    if(clock_mask & ICNT){
+        // internal interconnect
+    }
+
+    if(clock_mask & ICNT_chLet){
+        trafficManager->_Step();
+    }
+
+    if(clock_mask & CORE){
+        //no request will be generated at this level.
+        this->gpu_cycle++;
+    }
+
+    flag = true;
+    for(int sub = 0; sub < this->subnet; sub++){
+        for (int input = 0; input < this->nodes; input++){
+            for(int vc = 0; vc < this->vcs; vc++){
+                if (_boundary_buffer[sub][input][vc].HasPacket() &&
+                        !_ejected_flit_queue[sub][input].empty() &&
+                        !_ejection_buffer[sub][input][vc].empty() &&
+                        !_processing_queue[input].empty() &&
+                        !_pending_reply[input].empty() && trafficManager->check_if_any_packet_to_drain()) {
+                    flag = false;
+                }
+            }
+        }
+    }
+    //}
     return flag;
 }
 
@@ -685,7 +685,7 @@ void Multi_GPU::run(){
                     off_state = 1;
                 }
                 if(off_state == 1){
-                    if(this->gpu_cycle - begin_off_cycle == this->iat){
+                    if(this->gpu_cycle - begin_off_cycle == this->iat - 1){
                         burst_state = 1;
                         off_state = 0;
                         on_state = 0;
@@ -703,9 +703,9 @@ void Multi_GPU::byte_spread_within_burst(int length, int volume) {
     it = this->byteArray.begin();
     while(volume > 0){
         if(it != this->byteArray.end()){
-            *it += 8;
+            *it += trafficModel->get_byte_granularity();
             ++it;
-            volume -= 8;
+            volume -= trafficModel->get_byte_granularity();
         }
         else{
             it = this->byteArray.begin();

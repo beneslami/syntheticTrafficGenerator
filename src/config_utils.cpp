@@ -205,7 +205,7 @@ extern "C" int config_input(char *line, int max_size) {
 
 bool ParseArgs(Configuration *cf, int argc, char **argv) {
     bool rc = false;
-    char topo_path[20] = "examples/";
+    char topo_path[200] = "src/examples/";
     strcat(topo_path, argv[1]);
     struct stat sb;
     if (stat(topo_path, &sb) == 0) {
@@ -222,6 +222,7 @@ bool ParseArgs(Configuration *cf, int argc, char **argv) {
             cf->ParseString(argv[1]);
         }
     }
+
     if (rc == true) {
         std::cout << color_ostream::clr::green << "config file for " << topo_path << " is read successfully" << color_ostream::clr::reset
                   << std::endl;

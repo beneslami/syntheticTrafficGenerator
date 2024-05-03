@@ -102,6 +102,10 @@ int Traffic_Model::get_cycle() {
     return this->cycle;
 }
 
+int Traffic_Model::get_byte_granularity() {
+    return this->byte_granularity;
+}
+
 Spatial_Locality *Traffic_Model::get_spatial_locality(){
     return this->spatial_locality;
 }
@@ -110,6 +114,7 @@ void Traffic_Model::read_model_file() {
     std::ifstream modelFile(traffic_model_path);
     json data = json::parse(modelFile);
     int sanity_check = 0;
+    this->byte_granularity = 1024;
     for(json::iterator it = data.begin(); it != data.end(); ++it){ // Either temporal or spatial
         if(it.key() == "cycle"){
             this->cycle = atoi(it.value().dump().c_str());
@@ -220,6 +225,9 @@ void Traffic_Model::read_model_file() {
                                 RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(latency_dist);
                                 core->set_processing_delay(dist);
                             }
+                        }
+                        if(core->return_smallest_packet() <= this->byte_granularity){
+                            this->byte_granularity = core->return_smallest_packet();
                         }
                         spatial_locality->add_core_instance(core);
                     }

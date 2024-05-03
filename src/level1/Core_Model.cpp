@@ -64,3 +64,14 @@ void Core_Model::show_model() {
     std::cout << "access latency distribution\n";
     this->processing_delay_dist->show_cdf();
 }
+
+int Core_Model::return_smallest_packet() {
+    int minimum = 1024;
+    std::map<int, RandomGenerator::CustomDistribution*>::iterator it;
+    for(it = request_packet_type_dist.begin(); it != request_packet_type_dist.end(); ++it){
+        if(it->second->smallest() <= minimum){
+            minimum = it->second->smallest();
+        }
+    }
+    return minimum;
+}

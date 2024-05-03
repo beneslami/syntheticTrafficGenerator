@@ -1,5 +1,7 @@
 import os
 import shutil
+import signal
+import subprocess
 
 
 def prepare_first(kernels_list, level):
@@ -26,26 +28,21 @@ def prepare_first(kernels_list, level):
 if __name__ == "__main__":
     level = "level1"
     path =   "/home/ben/Desktop/benchmarks/"
-    kernels_list_orig = {
+    kernels_list = {
         "pannotia": {"color-max": [1],
-                     "color-maxmin": [2, 3, 4, 5, 7, 8, 9, 10],
-                     "pagerank-spmv": [2, 3, 5, 7, 9],
-                     "sssp": [3, 6, 9],
+                     #"color-maxmin": [2, 3, 4, 5, 7, 8, 9, 10],
+                     #"pagerank-spmv": [2, 3, 5, 7, 9],
+                     #"sssp": [3, 6, 9],
                      "fw": [1],
-                     "pagerank": [2, 4]
+                     #"pagerank": [2, 4]
                      },
-        "parboil": {"mri-gridding": [1],
+        "parboil": {#"mri-gridding": [1],
                     "spmv": [1]
                     },
         "rodinia": {
             "cfd": [3],
             "gaussian": [2, 4, 6],
         },
-    }
-    kernels_list = {
-        "pannotia": {"color-max": [1],
-                     "color-maxmin": [2, 3, 4, 5, 7, 8, 9, 10]
-                     },
     }
     try:
         prepare_first(kernels_list, level)
@@ -60,5 +57,15 @@ if __name__ == "__main__":
                     save_path = path + suite + "/" + bench + "/ring/" + nv + "/4chiplet/data/" + "synthetic/" + level + "/" + str(kernel) + "/"
                     if not os.path.exists(save_path):
                         os.makedirs(save_path)
-                    command = "./src/booksim ring " + nv.split("k")[1] + " " + model_file + " " + save_path
-                    os.system(command)
+                    command = ["./src/booksim", "ring", nv.split("k")[1], model_file, save_path]
+                    print(" ".join(command))
+                    flag = False
+                    while not flag:
+                        process = subprocess.Popen(command)
+                        return_code = process.wait()
+                        if return_code == -signal.SIGABRT:
+                            shutil.rmtree(save_path)
+                            os.makedirs(save_path)
+                        else:
+                            flag = True
+

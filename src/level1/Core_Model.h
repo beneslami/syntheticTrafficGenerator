@@ -26,6 +26,7 @@ public:
     int generate_processing_delay();
     int generate_request_packet_type(int);
     int generate_reply_packet_type(int);
+    int return_smallest_packet();
     void show_model();
 };
 

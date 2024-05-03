@@ -254,7 +254,7 @@ BookSimConfig::BookSimConfig() {
     _float_map["acc_stopping_thres"] = 0.05;
     AddStrField("acc_stopping_thres", ""); // workaround to allow for vector specification
 
-    _int_map["sim_count"] = 3;   // number of simulations to perform
+    _int_map["sim_count"] = 1;   // number of simulations to perform
 
 
     _int_map["include_queuing"] = 1; // non-zero includes source queuing latency

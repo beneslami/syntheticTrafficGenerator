@@ -156,7 +156,7 @@ int main(int argc, char **argv) {
 
     BookSimConfig config;
     if (!ParseArgs(&config, argc, argv)) {
-        cerr << "Usage: " << argv[0] << " TOPOLOGY[mesh, ring, torus, fly]  NVLINK: [4, 3, 2, 1]" << "MODEL_FILE   SAVING_PATH" << endl;
+        cerr << "Usage: " << argv[0] << " TOPOLOGY[mesh, ring, torus, fly]  NVLINK: [4, 3, 2, 1]   " << "MODEL_FILE   SAVING_PATH" << endl;
         return 0;
     }
 

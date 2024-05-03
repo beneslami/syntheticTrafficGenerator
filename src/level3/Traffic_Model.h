@@ -15,6 +15,7 @@
 class Traffic_Model {
 private:
     int cycle;
+    int byte_granularity;
     std::string traffic_model_path;
     std::string trace_file_path;
     class Temporal_Locality *request_temporal_locality;
@@ -35,6 +36,7 @@ public:
     int return_kernel_num(std::string);
     void init(int);
     void reinint();
+    int get_byte_granularity();
 };
 
 #endif //B_OOKSIM2_TRAFFC_MODEL_H

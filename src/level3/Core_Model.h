@@ -28,6 +28,7 @@ public:
     int generate_request_packet_type(int);
     int generate_reply_packet_type(int);
     void show_model();
+    int return_smallest_packet();
 };
 
 
