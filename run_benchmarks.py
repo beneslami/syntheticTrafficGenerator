@@ -30,13 +30,13 @@ if __name__ == "__main__":
     path =   "/home/ben/Desktop/benchmarks/"
     kernels_list = {
         "pannotia": {"color-max": [1],
-                     #"color-maxmin": [2, 3, 4, 5, 7, 8, 9, 10],
-                     #"pagerank-spmv": [2, 3, 5, 7, 9],
-                     #"sssp": [3, 6, 9],
+                     "color-maxmin": [2, 3, 4, 5, 7, 8, 9, 10],
+                     "pagerank-spmv": [2, 3, 5, 7, 9],
+                     "sssp": [3, 6, 9],
                      "fw": [1],
-                     #"pagerank": [2, 4]
+                     "pagerank": [2, 4]
                      },
-        "parboil": {#"mri-gridding": [1],
+        "parboil": {"mri-gridding": [1],
                     "spmv": [1]
                     },
         "rodinia": {

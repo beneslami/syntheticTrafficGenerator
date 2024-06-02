@@ -55,7 +55,7 @@ private:
     vector <vector<int>> _packet_size_rate;
     vector<int> _packet_size_max_val;
 
-protected:
+public:
     int _nodes;
     int _routers;
     int _vcs;
@@ -324,6 +324,7 @@ public:
     void _GeneratePacket(int source, int size, int destination, Flit::FlitType, int subnet, int cl, int time, void* const data );
     bool check_if_any_packet_to_drain();
     int get_partial_packet_occupancy(int, int, int);
+    bool has_buffer(int, int, int);
 
     void _Step();
     virtual ~TrafficManager();

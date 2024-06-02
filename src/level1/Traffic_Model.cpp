@@ -220,6 +220,14 @@ void Traffic_Model::read_model_file() {
                         spatial_locality->add_core_instance(core);
                     }
                 }
+                else if(it2.key() == "reply_window"){
+                    std::map<int, int>reply_window;
+                    for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
+                        reply_window.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
+                    }
+                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(reply_window);
+                    this->spatial_locality->set_reply_window(dist);
+                }
             }
         }
     }

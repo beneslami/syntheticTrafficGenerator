@@ -1650,7 +1650,6 @@ bool TrafficManager::Run( ){
             cout << "Simulation unstable, ending ..." << endl;
             return false;
         }
-        trafficModel->reinint();
 
         // Empty any remaining packets
         //cout << "Draining remaining packets ..." << endl;
@@ -1702,6 +1701,7 @@ bool TrafficManager::Run( ){
         multi_GPU->update_throughput();
 
         multi_GPU->reset();
+        trafficModel->reinint();
     }
 
     gettimeofday(&end_time, NULL);
@@ -2346,4 +2346,10 @@ bool TrafficManager::check_if_any_packet_to_drain() {
         }
     }
     return flag;
+}
+
+bool TrafficManager::has_buffer(int subnet, int chiplet, int size) {
+    int n_flits = (size / this->_flit_size) + ((size % this->_flit_size) ? 1 : 0);
+    bool result = this->_partial_packets[subnet][chiplet][0].size() + n_flits <= 32768;
+    return result;
 }

@@ -106,11 +106,13 @@ private:
     Stats *total_throughput;
     std::vector<int>byteArray;
     std::vector<queue<mem_fetch *> > _pending_reply;
+    std::vector<std::queue<mem_fetch*>>waiting_queue;
     std::vector<vector<vector<_BoundaryBufferItem> > > _boundary_buffer;
     std::vector<vector<vector<_EjectionBufferItem> > > _ejection_buffer;
     std::vector<vector<queue<Flit* > > > _ejected_flit_queue;
     std::vector<std::vector<int> >_round_robin_turn;
     std::map<int, std::vector<mem_fetch*> >_processing_queue;
+    std::vector<int>chLet_c;
     double IcntToCoreRatio;
     void byte_spread_within_burst(int, int);
 public:
@@ -150,6 +152,7 @@ public:
     int get_ejection_buffer_capacity(){ return ejection_buffer_capacity; }
     Flit *GetEjectedFlit(int , int);
     mem_fetch *pending_reply_front(int);
+    void print_config();
     inline double min4(double a, double b, double c, double d)
     {
         double smallest = min3(a,b,c);

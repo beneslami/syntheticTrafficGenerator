@@ -27,8 +27,16 @@ void Spatial_Locality::set_source_distribution(RandomGenerator::CustomDistributi
     this->source_distribution = dist;
 }
 
+void Spatial_Locality::set_reply_window(RandomGenerator::CustomDistribution *dist){
+    this->reply_window = dist;
+}
+
 int Spatial_Locality::generate_source(){
     return this->source_distribution->Generate();
+}
+
+int Spatial_Locality::generate_reply_window() {
+    return this->reply_window->Generate();
 }
 
 void Spatial_Locality::show_model(){
