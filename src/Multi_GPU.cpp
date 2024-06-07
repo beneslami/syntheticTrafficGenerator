@@ -232,13 +232,13 @@ bool Multi_GPU::boundary_buffer_isFull(int subnet, int chiplet){
 
 void Multi_GPU::WriteOutBuffer(int subnet, int dest, Flit* f) {
     int vc = f->vc;
-    assert(_ejection_buffer[subnet][dest][vc].size() < ejection_buffer_capacity);
+    assert(_ejection_buffer[subnet][dest][vc].size() < this->ejection_buffer_capacity);
     _ejection_buffer[subnet][dest][vc].push(f);
 }
 
 void Multi_GPU::boundaryBufferTransfer(int subnet, int chiplet) {
-    for(int vc = 0; vc < this->vcs; vc++) {
-        if (!_ejection_buffer[subnet][chiplet][vc].empty() && _boundary_buffer[subnet][chiplet][vc].Size() < boundary_buffer_capacity) {
+    for(int vc = 0; vc < this->vcs; ++vc) {
+        if (!_ejection_buffer[subnet][chiplet][vc].empty() && _boundary_buffer[subnet][chiplet][vc].Size() < this->boundary_buffer_capacity) {
             Flit *f = _ejection_buffer[subnet][chiplet][vc].front();
             assert(f);
             _ejection_buffer[subnet][chiplet][vc].pop();
@@ -312,7 +312,7 @@ void Multi_GPU::icnt_push(int src, int dest, mem_fetch *mf){
 mem_fetch* Multi_GPU::icnt_pop(int subnet, int chiplet){
     mem_fetch *mf = NULL;
     int turn = _round_robin_turn[subnet][chiplet];
-    for(int vc = 0; vc < this->vcs && (mf == NULL); vc++) {
+    for(int vc = 0; vc < this->vcs && (mf == NULL); ++vc) {
         if (_boundary_buffer[subnet][chiplet][turn].HasPacket()) {
             mf = static_cast<mem_fetch *>(_boundary_buffer[subnet][chiplet][turn].PopPacket());
             mf->timestamp = gpu_cycle;
@@ -360,6 +360,29 @@ int Multi_GPU::get_received_queue_occupancy(int subnet, int node){
         occupancy += _boundary_buffer[subnet][node][vc].Size();
     }
     return occupancy;
+}
+
+bool Multi_GPU::icnt_busy() {
+    bool busy = !trafficManager->_total_in_flight_flits[0].empty();
+    if(!busy){
+        for(int subnet = 0; subnet < this->subnet; ++subnet){
+            for(int node = 0; node < this->nodes; ++nodes){
+                assert(trafficManager->_partial_packets[subnet][node][0].empty());
+            }
+        }
+    }
+    else{
+        for(int subnet = 0; subnet < this->subnet; ++subnet) {
+            for (int node = 0; node < this->nodes; ++nodes) {
+                for (int vc = 0; vc < this->vcs; ++vc) {
+                    if(this->_boundary_buffer[subnet][node][vc].HasPacket()){
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+    return false;
 }
 
 void Multi_GPU::_BoundaryBufferItem::PushFlitData(void* data,bool is_tail){
@@ -522,7 +545,7 @@ bool Multi_GPU::drain_queues() {
         }
 
         if(clock_mask & ICNT_chLet){
-            int window = 128;//trafficModel->get_spatial_locality()->generate_reply_window();
+            int window = trafficModel->get_spatial_locality()->generate_reply_window();
             for(int i = 0; i < window; ++i){
                 int chip = i % 4;
                 if (!pending_reply_isEmpty(chip)) {
@@ -614,8 +637,7 @@ void Multi_GPU::run(){
                     }
                     else {
                         trafficModel->outTrace << "request received\tsrc: " << mf->src << "\tdst: "
-                                 << mf->dest << "\tID: "
-                                 << mf->id
+                                 << mf->dest << "\tID: " << mf->id
                                  << "\ttype: " << mf->type << "\tcycle: " << gpu_cycle << "\tchip: " << chip
                                  << "\tsize: " << mf->size << "\tq: "
                                  << get_received_queue_occupancy(subnetId, chip) << std::endl;
@@ -662,7 +684,7 @@ void Multi_GPU::run(){
         }
 
         if(clock_mask & ICNT_chLet){
-            int window = 128;//trafficModel->get_spatial_locality()->generate_reply_window();
+            int window = trafficModel->get_spatial_locality()->generate_reply_window();
             for(int i = 0; i < window; ++i){
                 int chip = i  % 4;
                 if (!pending_reply_isEmpty(chip)) {
@@ -744,18 +766,21 @@ void Multi_GPU::run(){
                     }*/
                     //while(byte != 0) {
                         //spatial locality stuff is here
-                        int src = trafficModel->get_spatial_locality()->generate_source();
-                        int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
-                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
-                        //if (byte - byte_val >= 0) {
+                        int window = trafficModel->get_spatial_locality()->generate_request_window();
+                        for(int i = 0; i < window; ++i) {
+                            int src = trafficModel->get_spatial_locality()->generate_source();
+                            int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
+                            int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
+                            //if (byte - byte_val >= 0) {
                             mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
                             if (trafficManager->has_buffer(0, src, byte_val)) {
                                 this->icnt_push(src, dst, mf);
                                 trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
-                                       << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
-                                       << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size << "\tq: "
-                                       << trafficManager->get_partial_packet_occupancy(0, mf->src, 0) << std::endl;
+                                   << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
+                                   << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size << "\tq: "
+                                   << trafficManager->get_partial_packet_occupancy(0, mf->src, 0) << std::endl;
                             }
+                        }
                             //else{
                                 //this->waiting_queue[src].push(mf);
                             //}

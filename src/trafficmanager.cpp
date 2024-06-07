@@ -730,7 +730,7 @@ void TrafficManager::_RetireFlit( Flit *f, int dest ){
                        << ", dest = " << head->dest
                        << ")." << endl;
         }
-
+#if 0
         //code the source of request, look carefully, its tricky ;)
         if (f->type == Flit::READ_REQUEST || f->type == Flit::WRITE_REQUEST) {
             PacketReplyInfo* rinfo = PacketReplyInfo::New();
@@ -745,9 +745,15 @@ void TrafficManager::_RetireFlit( Flit *f, int dest ){
             } else if(f->type == Flit::ANY_TYPE) {
                 _requestsOutstanding[f->src]--;
             }
-      
         }
-
+#endif
+        if(f->type == Flit::READ_REPLY || f->type == Flit::WRITE_REPLY  ){
+            _requestsOutstanding[dest]--;
+        } else if(f->type == Flit::ANY_TYPE) {
+            ostringstream err;
+            err << "Flit " << f->id << " cannot be ANY_TYPE" ;
+            Error( err.str( ) );
+        }
         // Only record statistics once per packet (at tail)
         // and based on the simulation state
         if ( ( _sim_state == warming_up ) || f->record ) {
@@ -1019,11 +1025,11 @@ void TrafficManager::_Step( ){
                                << " VC " << ejected_flit->vc << ")"
                                << "from ejection buffer." << endl;
                 }
-                flits[subnet].insert(make_pair(n, f));
+                flits[subnet].insert(make_pair(n, ejected_flit));
                 if((_sim_state == warming_up) || (_sim_state == running)) {
-                    ++_accepted_flits[f->cl][n];
-                    if(f->tail) {
-                        ++_accepted_packets[f->cl][n];
+                    ++_accepted_flits[ejected_flit->cl][n];
+                    if(ejected_flit->tail) {
+                        ++_accepted_packets[ejected_flit->cl][n];
                     }
                 }
             }
@@ -1081,9 +1087,9 @@ void TrafficManager::_Step( ){
                 assert(cf);
                 assert(cf->cl == c);
 
-                if(cf->subnetwork != subnet) {
+                /*if(cf->subnetwork != subnet) {
                     continue;
-                }
+                }*/
                 assert(cf->subnetwork == subnet);
 
                 if(f && (f->pri >= cf->pri)) {
@@ -1091,7 +1097,6 @@ void TrafficManager::_Step( ){
                 }
 
                 if(cf->head && cf->vc == -1) { // Find first available VC
-	  
                     OutputSet route_set;
                     //cf->cycle = _time;
                     _rf(NULL, cf, -1, &route_set, true);
@@ -2350,6 +2355,6 @@ bool TrafficManager::check_if_any_packet_to_drain() {
 
 bool TrafficManager::has_buffer(int subnet, int chiplet, int size) {
     int n_flits = (size / this->_flit_size) + ((size % this->_flit_size) ? 1 : 0);
-    bool result = this->_partial_packets[subnet][chiplet][0].size() + n_flits <= 32768;
+    bool result = this->_partial_packets[subnet][chiplet][0].size() + n_flits <= multi_GPU->get_input_buffer_capacity();
     return result;
 }

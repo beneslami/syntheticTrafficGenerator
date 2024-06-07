@@ -158,7 +158,15 @@ void Traffic_Model::read_model_file() {
         }
         else if(it.key() == "spatial"){
             for (json::iterator it2 = it->begin(); it2 != it->end(); ++it2) {
-                if(it2.key() == "source"){
+                if(it2.key() == "request_window"){
+                    std::map<int, int>request_window;
+                    for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
+                        request_window.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
+                    }
+                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(request_window);
+                    this->spatial_locality->set_request_window(dist);
+                }
+                else if(it2.key() == "source"){
                     std::map<int, int>source_dist;
                     for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
                         source_dist.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));

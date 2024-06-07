@@ -148,11 +148,12 @@ public:
     void add_throughput(int, int);
     void print_throughput(ostream &os = cout);
     void print_overall_throughput(ostream &os = cout);
-    int get_input_buffer_capacity(){ return input_buffer_capacity; }
+    long unsigned int get_input_buffer_capacity(){ return input_buffer_capacity; }
     int get_ejection_buffer_capacity(){ return ejection_buffer_capacity; }
     Flit *GetEjectedFlit(int , int);
     mem_fetch *pending_reply_front(int);
     void print_config();
+    bool icnt_busy();
     inline double min4(double a, double b, double c, double d)
     {
         double smallest = min3(a,b,c);
