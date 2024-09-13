@@ -1,0 +1,52 @@
+            if (burst_state == 1) {
+                if (on_state == 0) {
+                    this->burst_duration = trafficModel->generate_burst_duration("req");
+                    begin_on_cycle = this->gpu_cycle;
+                    on_state = 1;
+                }
+                if (on_state == 1) {
+                    assert(this->gpu_cycle >= begin_on_cycle);
+                    int window = trafficModel->get_spatial_locality()->generate_request_window();
+                    for (int i = 0; i < window; ++i) {
+                        int src = trafficModel->get_spatial_locality()->generate_source();
+                        int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
+                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(
+                                src)->generate_request_packet_type(dst);
+                        mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
+                        if (trafficManager->has_buffer(0, src, byte_val)) {
+                            this->icnt_push(src, dst, mf);
+                            trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
+                                                   << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
+                                                   << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size
+                                                   << "\tq: "
+                                                   << trafficManager->get_partial_packet_occupancy(0, mf->src, 0)
+                                                   << std::endl;
+                        }
+                    }
+                }
+                if (this->burst_duration == 1) {
+                    on_state = 0;
+                    burst_state = 0;
+                    off_state = 0;
+                }
+                if (this->gpu_cycle - begin_on_cycle == this->burst_duration - 1) {
+                    on_state = 0;
+                    burst_state = 0;
+                    off_state = 0;
+                }
+            }
+            if (burst_state == 0) {
+                if (off_state == 0) {
+                    this->iat = trafficModel->generate_off_cycle("req");
+                    begin_off_cycle = this->gpu_cycle;
+                    off_state = 1;
+                }
+                if (off_state == 1) {
+                    if (this->gpu_cycle - begin_off_cycle == this->iat) {
+                        burst_state = 1;
+                        off_state = 0;
+                        on_state = 0;
+                    }
+                }
+            }
+            ++this->gpu_cycle;
