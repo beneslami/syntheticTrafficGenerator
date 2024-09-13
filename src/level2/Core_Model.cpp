@@ -16,9 +16,10 @@ int Core_Model::get_id(){
     return this->id;
 }
 
-void Core_Model::set_destination_dist(RandomGenerator::CustomDistribution *dist){
-    this->destination_dist = dist;
+void Core_Model::set_destination_dist(MarkovChain *markov){
+    this->destination_markov = markov;
 }
+
 void Core_Model::set_processing_delay(RandomGenerator::CustomDistribution *dist){
     this->processing_delay_dist = dist;
 }
@@ -33,7 +34,7 @@ void Core_Model::set_packet_type_dist(std::map<int, RandomGenerator::CustomDistr
 }
 
 int Core_Model::generate_destination(){
-    return this->destination_dist->Generate();
+    return this->destination_markov->generate_next();
 }
 
 int Core_Model::generate_processing_delay(){
@@ -49,9 +50,10 @@ int Core_Model::generate_reply_packet_type(int chip) {
 }
 
 void Core_Model::show_model() {
+
     std::cout << "----- chip " << this->id << std::endl;
     std::cout << "destination distribution:\n";
-    this->destination_dist->show_cdf();
+    this->destination_markov->show();
     std::cout << "\n";
     std::cout << "packet type distribution:\n";
     std::map<int, RandomGenerator::CustomDistribution*>::iterator it;

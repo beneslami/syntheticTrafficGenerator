@@ -31,6 +31,22 @@ int Spatial_Locality::generate_source(){
     return this->source_distribution->Generate();
 }
 
+void Spatial_Locality::set_reply_window(RandomGenerator::CustomDistribution *dist){
+    this->reply_window = dist;
+}
+
+void Spatial_Locality::set_request_window(RandomGenerator::CustomDistribution *dist) {
+    this->request_window = dist;
+}
+
+int Spatial_Locality::generate_reply_window() {
+    return this->reply_window->Generate();
+}
+
+int Spatial_Locality::generate_request_window() {
+    return this->request_window->Generate();
+}
+
 void Spatial_Locality::show_model(){
     std::cout << "source distribution:\n";
     this->source_distribution->show_cdf();

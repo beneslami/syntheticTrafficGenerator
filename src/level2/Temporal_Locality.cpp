@@ -1,7 +1,6 @@
 //
 // Created by ben on 3/30/24.
 //
-
 #include "Temporal_Locality.h"
 
 Temporal_Locality::Temporal_Locality() {
@@ -12,7 +11,7 @@ Temporal_Locality::~Temporal_Locality() {
 
 }
 
-void Temporal_Locality::set_iat(MarkovChain *dist) {
+void Temporal_Locality::set_iat(RandomGenerator::CustomDistribution *dist) {
     this->iat = dist;
 }
 
@@ -25,7 +24,7 @@ void Temporal_Locality::set_burst_volume(std::map<int, RandomGenerator::CustomDi
 }
 
 int Temporal_Locality::generate_iat() {
-    return this->iat->get_next_state();
+    return this->iat->Generate();
 }
 
 int Temporal_Locality::generate_burst_duration() {
@@ -38,7 +37,7 @@ int Temporal_Locality::generate_burst_volume(int duration) {
 
 void Temporal_Locality::show_model(){
     std::cout << "----Inter Arrival Time----\n";
-    this->iat->show();
+    this->iat->show_cdf();
     std::cout << "----Burst Duration----\n";
     this->burst_duration->show_cdf();
     std::map<int, RandomGenerator::CustomDistribution*>::iterator it;
