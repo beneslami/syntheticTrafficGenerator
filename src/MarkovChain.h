@@ -11,17 +11,14 @@
 class MarkovChain {
 private:
     std::map<int, RandomGenerator::CustomDistribution*>states;
-    int current_state;
-    int initial_flag = 0;
+    int current_state = -1;
     int trace_back_state(int);
 public:
     MarkovChain();
     ~MarkovChain();
-    void set_state(int state, RandomGenerator::CustomDistribution*);
+    void set_state(std::map<int, RandomGenerator::CustomDistribution*>dist);
     void show();
-    int get_next_state();
-    int get_current_state();
-    void set_next_state(int);
+    int generate_next();
 };
 
 

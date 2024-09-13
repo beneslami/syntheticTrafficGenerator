@@ -5,6 +5,7 @@
 #include "Multi_GPU.h"
 #include "globals.hpp"
 #include "trafficmanager.hpp"
+#include <bits/stdc++.h>
 
 
 int Multi_GPU::id_counter = 0;
@@ -343,12 +344,18 @@ void Multi_GPU::processing_queue_pop(int chiplet){
     std::vector<mem_fetch*>::iterator it;
     for(it = _processing_queue[chiplet].begin(); it != _processing_queue[chiplet].end(); ++it) {
         return_mf = *it;
-        if (this->gpu_cycle - return_mf->timestamp >= return_mf->processing_time) {
-            if(1/*TODO !pending_reply_isFull(chiplet)*/){
+        if(return_mf) {
+            assert(this->gpu_cycle);
+            assert(return_mf->timestamp);
+            assert(return_mf->processing_time);
+            if (this->gpu_cycle - return_mf->timestamp >= return_mf->processing_time) {
+                //if (!pending_reply_isFull(chiplet)) {
                 pending_reply_push(chiplet, return_mf);
                 this->_processing_queue[chiplet].erase(std::remove(this->_processing_queue[chiplet].begin(),
-               this->_processing_queue[chiplet].end(), return_mf), this->_processing_queue[chiplet].end());
+                                               this->_processing_queue[chiplet].end(),return_mf),
+                                               this->_processing_queue[chiplet].end());
                 break;
+                //}
             }
         }
     }
@@ -548,6 +555,7 @@ bool Multi_GPU::drain_queues() {
             int window = trafficModel->get_spatial_locality()->generate_reply_window();
             for(int i = 0; i < window; ++i){
                 int chip = i % 4;
+                //for(int chip = 0; chip < this->nodes; ++chip){
                 if (!pending_reply_isEmpty(chip)) {
                     mem_fetch *mf = pending_reply_front(chip);
                     if (mf) {
@@ -587,7 +595,7 @@ bool Multi_GPU::drain_queues() {
 
         if(clock_mask & CORE){
             //no request will be generated at this level.
-            this->gpu_cycle++;
+            ++this->gpu_cycle;
         }
 
         flag = true;
@@ -614,6 +622,7 @@ void Multi_GPU::run(){
     bool off_state = 0;
     int begin_off_cycle = 0;
     int begin_on_cycle = 0;
+    int max_cylce_time = trafficModel->get_cycle();
     do{
         int clock_mask = next_clock_domain();
 
@@ -686,7 +695,8 @@ void Multi_GPU::run(){
         if(clock_mask & ICNT_chLet){
             int window = trafficModel->get_spatial_locality()->generate_reply_window();
             for(int i = 0; i < window; ++i){
-                int chip = i  % 4;
+                int chip = i % 4;
+            //for(int chip = 0; chip < this->nodes; ++chip){
                 if (!pending_reply_isEmpty(chip)) {
                     mem_fetch *mf = pending_reply_front(chip);
                     if (mf) {
@@ -709,7 +719,7 @@ void Multi_GPU::run(){
 
         if(clock_mask & L2){
             // pop remote request from the queue
-            int window = 128;
+            constexpr int window = 128;
             for(int i = 0; i < window; ++i){
                 int chip = i % 4;
                 processing_queue_pop(chip);
@@ -724,108 +734,80 @@ void Multi_GPU::run(){
             trafficManager->_Step();
         }
 
-        if(clock_mask & CORE){
+        if(clock_mask & CORE) {
             if(burst_state == 1){
-                if(on_state == 0){
+                if (on_state == 0) {
                     this->burst_duration = trafficModel->generate_burst_duration("req");
-                    this->burst_volume = trafficModel->generate_burst_volume("req", this->burst_duration);
-                    this->byte_spread_within_burst(burst_duration, burst_volume);
                     begin_on_cycle = this->gpu_cycle;
                     on_state = 1;
                 }
-                if(on_state == 1) {
+                if (on_state == 1) {
                     assert(this->gpu_cycle >= begin_on_cycle);
-                    //int byte = this->byteArray[this->gpu_cycle - begin_on_cycle];
-                    //int empty = 0;
-                    /*while (byte != 0) {
-                        for (int i = 0; i < this->nodes; ++i) {
-                            mem_fetch *mf = this->waiting_queue[i].front();
-                            if(mf != NULL) {
-                                int src = mf->src;
-                                int dst = mf->dest;
-                                int byte_val = mf->size;
-                                if (byte - byte_val >= 0) {
-                                    if (trafficManager->has_buffer(0, src, byte_val)) {
-                                        this->icnt_push(src, dst, mf);
-                                        trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: "
-                                               << mf->dest << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
-                                               << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size << "\tq: "
-                                               << trafficManager->get_partial_packet_occupancy(0, mf->src, 0) << std::endl;
-                                        byte -= byte_val;
-                                        this->waiting_queue[i].pop();
-                                    }
-                                }
-                            }
-                            else{
-                                ++empty;
-                            }
+                    int window = trafficModel->get_spatial_locality()->generate_request_window();
+                    for (int i = 0; i < window; ++i) {
+                        int src = trafficModel->get_spatial_locality()->generate_source();
+                        int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
+                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(
+                                src)->generate_request_packet_type(dst);
+                        mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
+                        if (trafficManager->has_buffer(0, src, byte_val)) {
+                            this->icnt_push(src, dst, mf);
+                            trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
+                                                   << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
+                                                   << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size
+                                                   << "\tq: "
+                                                   << trafficManager->get_partial_packet_occupancy(0, mf->src, 0)
+                                                   << std::endl;
                         }
-                        if(empty == this->nodes){
-                            break;
-                        }
-                    }*/
-                    //while(byte != 0) {
-                        //spatial locality stuff is here
-                        int window = trafficModel->get_spatial_locality()->generate_request_window();
-                        for(int i = 0; i < window; ++i) {
-                            int src = trafficModel->get_spatial_locality()->generate_source();
-                            int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
-                            int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
-                            //if (byte - byte_val >= 0) {
-                            mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
-                            if (trafficManager->has_buffer(0, src, byte_val)) {
-                                this->icnt_push(src, dst, mf);
-                                trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
-                                   << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
-                                   << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size << "\tq: "
-                                   << trafficManager->get_partial_packet_occupancy(0, mf->src, 0) << std::endl;
-                            }
-                        }
-                            //else{
-                                //this->waiting_queue[src].push(mf);
-                            //}
-                            //byte -= byte_val;
-                        //}
-                    //}
+                    }
+                }
+                if(this->burst_duration == 1){
+                    on_state = 0;
+                    burst_state = 0;
+                    off_state = 0;
                 }
                 if(this->gpu_cycle - begin_on_cycle == this->burst_duration - 1){
                     on_state = 0;
                     burst_state = 0;
                     off_state = 0;
-                    this->byteArray.clear();
                 }
             }
-            if(burst_state == 0){
-                if(off_state == 0) {
-                    begin_off_cycle = this->gpu_cycle;
+            if (burst_state == 0) {
+                if (off_state == 0) {
                     this->iat = trafficModel->generate_off_cycle("req");
+                    begin_off_cycle = this->gpu_cycle;
                     off_state = 1;
                 }
-                if(off_state == 1){
-                    if(this->gpu_cycle - begin_off_cycle == this->iat - 1){
+                if (off_state == 1) {
+                    if (this->gpu_cycle - begin_off_cycle == this->iat) {
                         burst_state = 1;
                         off_state = 0;
                         on_state = 0;
                     }
                 }
             }
-            this->gpu_cycle++;
+            ++this->gpu_cycle;
         }
-    }while(this->gpu_cycle <= trafficModel->get_cycle());
+    }while(this->gpu_cycle <= max_cylce_time);
 }
 
 void Multi_GPU::byte_spread_within_burst(int length, int volume) {
     this->byteArray.resize(length, 0);
-    std::vector<int>::iterator it;
-    it = this->byteArray.begin();
-    while(volume > 0){
-        if(it != this->byteArray.end()){
-            *it += trafficModel->get_byte_granularity();
-            ++it;
-            volume -= trafficModel->get_byte_granularity();
-        }
-        else{
-            it = this->byteArray.begin();
+    if(length == 1){
+        this->byteArray[0] = volume;
+    }
+    else{
+        std::vector<int>::iterator it;
+        it = this->byteArray.begin();
+        while(volume > 0){
+            if(it != this->byteArray.end()){
+                *it += trafficModel->get_byte_granularity();
+                ++it;
+                volume -= trafficModel->get_byte_granularity();
+            }
+            else{
+                it = this->byteArray.begin();
+            }
         }
     }
 }
