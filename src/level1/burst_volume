@@ -31,7 +31,6 @@
                                 byte_per_cycle -= byte_val;
                             }
                             else{
-				break;
                                 full_checking[src] = 1;
                                 if(accumulate(full_checking.begin(), full_checking.end(), 0) == 4){
                                     break;

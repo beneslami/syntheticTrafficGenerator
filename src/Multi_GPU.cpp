@@ -736,28 +736,43 @@ void Multi_GPU::run(){
 
         if(clock_mask & CORE) {
             if(burst_state == 1){
-                if (on_state == 0) {
+                if(on_state == 0){
                     this->burst_duration = trafficModel->generate_burst_duration("req");
+                    this->burst_volume = trafficModel->generate_burst_volume("req", this->burst_duration);
+                    this->byte_spread_within_burst(this->burst_duration, this->burst_volume);
                     begin_on_cycle = this->gpu_cycle;
                     on_state = 1;
                 }
-                if (on_state == 1) {
+                if(on_state == 1) {
                     assert(this->gpu_cycle >= begin_on_cycle);
-                    int window = trafficModel->get_spatial_locality()->generate_request_window();
-                    for (int i = 0; i < window; ++i) {
+                    //int window = trafficModel->get_spatial_locality()->generate_request_window();
+                    int byte_per_cycle = this->byteArray[this->gpu_cycle - begin_on_cycle];
+                    //for(int i = 0; i < window; ++i) {
+                    std::vector<bool>full_checking;
+                    full_checking.resize(4, 0);
+                    while(byte_per_cycle > 0){
                         int src = trafficModel->get_spatial_locality()->generate_source();
                         int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
-                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(
-                                src)->generate_request_packet_type(dst);
-                        mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
-                        if (trafficManager->has_buffer(0, src, byte_val)) {
-                            this->icnt_push(src, dst, mf);
-                            trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
-                                                   << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
-                                                   << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size
-                                                   << "\tq: "
-                                                   << trafficManager->get_partial_packet_occupancy(0, mf->src, 0)
-                                                   << std::endl;
+                        int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
+                        if(byte_val <= byte_per_cycle) {
+                            //std::cout << byte_per_cycle << "\t" << byte_val << "\t" << this->burst_duration << "\t" << this->burst_volume << "\t" << this->gpu_cycle << "\t" << begin_on_cycle << std::endl;
+                            mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
+                            if (trafficManager->has_buffer(0, src, byte_val)) {
+                                this->icnt_push(src, dst, mf);
+                                trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
+                                                       << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
+                                                       << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size
+                                                       << "\tq: "
+                                                       << trafficManager->get_partial_packet_occupancy(0, mf->src, 0)
+                                                       << std::endl;
+                                byte_per_cycle -= byte_val;
+                            }
+                            else{
+                                full_checking[src] = 1;
+                                if(accumulate(full_checking.begin(), full_checking.end(), 0) == 4){
+                                    break;
+                                }
+                            }
                         }
                     }
                 }

@@ -31,7 +31,7 @@ int MarkovChain_extended::generate_next(){
         if(it->first == this->current_state){
             result = it->second->Generate();
             shift_window(result);
-            break;
+            return result;
         }
     }
     return result;
