@@ -1,5 +1,5 @@
 //
-// Created by ben on 3/31/24.
+// Created by ben on 9/11/24.
 //
 
 #include "Spatial_Locality.h"
@@ -29,6 +29,22 @@ void Spatial_Locality::set_source_distribution(RandomGenerator::CustomDistributi
 
 int Spatial_Locality::generate_source(){
     return this->source_distribution->Generate();
+}
+
+void Spatial_Locality::set_reply_window(RandomGenerator::CustomDistribution *dist){
+    this->reply_window = dist;
+}
+
+void Spatial_Locality::set_request_window(RandomGenerator::CustomDistribution *dist) {
+    this->request_window = dist;
+}
+
+int Spatial_Locality::generate_reply_window() {
+    return this->reply_window->Generate();
+}
+
+int Spatial_Locality::generate_request_window() {
+    return this->request_window->Generate();
 }
 
 void Spatial_Locality::show_model(){

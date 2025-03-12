@@ -18,11 +18,11 @@
 #include "trafficmanager.hpp"
 #include "stats.hpp"
 
-#if LEVEL == leve1
+/*#if LEVEL == level1
 #include "level1/Traffic_Model.h"
 #elif LEVEL == level2
-#include "level2/Traffic_Model.h"
-#elif LEVEL == level3
+#include "level2/Traffic_Model.h"*/
+#if LEVEL == level3
 #include "level3/Traffic_Model.h"
 #endif
 

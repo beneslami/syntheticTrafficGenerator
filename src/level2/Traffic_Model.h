@@ -6,11 +6,15 @@
 #define B_OOKSIM2_TRAFFIC_MODEL_H
 
 #include "../RandomGenerator.h"
+#include "../trafficmanager.hpp"
 #include "Temporal_Locality.h"
 #include "Spatial_Locality.h"
 #include <fstream>
-#include <string>
+#include <vector>
+#include <map>
 #include <queue>
+#include <string>
+
 
 class Traffic_Model {
 private:

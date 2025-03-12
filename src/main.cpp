@@ -54,11 +54,11 @@
 #include "power_module.hpp"
 #include "Multi_GPU.h"
 
-#if LEVEL == leve1
+/*#if LEVEL == level1
 #include "level1/Traffic_Model.h"
 #elif LEVEL == level2
-#include "level2/Traffic_Model.h"
-#elif LEVEL == level3
+#include "level2/Traffic_Model.h"*/
+#if LEVEL == level3
 #include "level3/Traffic_Model.h"
 #endif
 
@@ -163,7 +163,8 @@ int main(int argc, char **argv) {
     multi_GPU = new Multi_GPU();
     multi_GPU->init(config);
     multi_GPU->set_link_frequency(argv[1], atoi(argv[2]));
-    trafficModel = new Traffic_Model(argv[3], argv[4]);
+    int history= 2; // WARNING: Dont forget to change this every time
+    trafficModel = new Traffic_Model(argv[3], argv[4], history);
     trafficModel->read_model_file();
 
     /*initialize routing, traffic, injection functions

@@ -3,17 +3,13 @@
 //
 
 #include "Traffic_Model.h"
-
-#include "Traffic_Model.h"
 #include "nlohmann/json.hpp"
-#include <fstream>
 #include <sstream>
-#include <queue>
 
 using json = nlohmann::json;
 
 int Traffic_Model::return_kernel_num(std::string path){
-    std::queue<std::string> res;
+    std::queue<string> res;
     int pos = 0;
     while(pos < int(path.size())){
         pos = path.find("/");
@@ -38,12 +34,13 @@ Traffic_Model::Traffic_Model(std::string path, std::string output_trace_name) {
 
 Traffic_Model::~Traffic_Model(){
     delete request_temporal_locality;
+    delete spatial_locality;
 }
 
 void Traffic_Model::init(int iteration) {
     std::ostringstream str;
     str << iteration;
-    outTrace.open(this->trace_file_path + "trace"+ str.str() + ".txt", std::ios::out);
+    outTrace.open(this->trace_file_path + "trace" + str.str() + ".txt", std::ios::out);
 }
 
 void Traffic_Model::reinint() {
@@ -98,6 +95,10 @@ void Traffic_Model::show_spatial_model(std::string type) {
     }
 }
 
+Spatial_Locality *Traffic_Model::get_spatial_locality(){
+    return this->spatial_locality;
+}
+
 int Traffic_Model::get_cycle() {
     return this->cycle;
 }
@@ -106,37 +107,24 @@ int Traffic_Model::get_byte_granularity() {
     return this->byte_granularity;
 }
 
-Spatial_Locality *Traffic_Model::get_spatial_locality(){
-    return this->spatial_locality;
-}
-
 void Traffic_Model::read_model_file() {
     std::ifstream modelFile(traffic_model_path);
     json data = json::parse(modelFile);
-    int sanity_check = 0;
     this->byte_granularity = 1024;
     for(json::iterator it = data.begin(); it != data.end(); ++it){ // Either temporal or spatial
         if(it.key() == "cycle"){
             this->cycle = atoi(it.value().dump().c_str());
-            sanity_check++;
         }
         else if(it.key() == "temporal"){
-            sanity_check++;
             for(json::iterator it2 = it->begin(); it2 != it->end(); ++it2){ // iat, burst duration and burst volume
                 std::map<int, int>temp;
                 if(it2.key() == "iat") {
-                    MarkovChain *markov = new MarkovChain();
                     for (json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3) {
-                        std::map<int, RandomGenerator::CustomDistribution*>state;
-                        int st = atoi(it3.key().c_str());
-                        for(json::iterator it4 = it3->begin(); it4 != it3->end(); ++it4){
-                            temp.insert(std::pair<int, int>(atoi(it4.key().c_str()), atoi(it4.value().dump().c_str())));
-                        }
-                        RandomGenerator::CustomDistribution *iat_dist = new RandomGenerator::CustomDistribution(temp);
-                        markov->set_state(st, iat_dist);
-                        temp.clear();
+                        temp.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
                     }
-                    request_temporal_locality->set_iat(markov);
+                    RandomGenerator::CustomDistribution *iat_dist = new RandomGenerator::CustomDistribution(temp);
+                    request_temporal_locality->set_iat(iat_dist);
+                    temp.clear();
                 }
                 else if(it2.key() == "duration") {
                     for (json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3) {
@@ -170,7 +158,15 @@ void Traffic_Model::read_model_file() {
         }
         else if(it.key() == "spatial"){
             for (json::iterator it2 = it->begin(); it2 != it->end(); ++it2) {
-                if(it2.key() == "source"){
+                if(it2.key() == "request_window"){
+                    std::map<int, int>request_window;
+                    for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
+                        request_window.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
+                    }
+                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(request_window);
+                    this->spatial_locality->set_request_window(dist);
+                }
+                else if(it2.key() == "source"){
                     std::map<int, int>source_dist;
                     for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
                         source_dist.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
@@ -178,18 +174,24 @@ void Traffic_Model::read_model_file() {
                     RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(source_dist);
                     this->spatial_locality->set_source_distribution(dist);
                 }
-                if(it2.key() == "chip"){
+                else if(it2.key() == "chip"){
                     for (json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3) {
                         int chip = atoi(it3.key().c_str());
                         Core_Model *core = new Core_Model(chip);
                         for(json::iterator it4 = it3->begin(); it4 != it3->end(); ++it4){
+                            MarkovChain *markov = new MarkovChain();
                             if(it4.key() == "destination"){
-                                std::map<int, int>dest_dist;
+                                std::map<int, RandomGenerator::CustomDistribution*>dest_markov;
                                 for(json::iterator it5 = it4->begin(); it5 != it4->end(); ++it5){
-                                    dest_dist.insert(std::pair<int, int>(atoi(it5.key().c_str()), atoi(it5.value().dump().c_str())));
+                                    std::map<int, int>dest_dist;
+                                    for(json::iterator it6 = it5->begin(); it6 != it5->end(); ++it6) {
+                                        dest_dist.insert(std::pair<int, int>(atoi(it6.key().c_str()),atoi(it6.value().dump().c_str())));
+                                    }
+                                    RandomGenerator::CustomDistribution *temp_dist = new RandomGenerator::CustomDistribution(dest_dist);
+                                    dest_markov.insert(std::pair<int, RandomGenerator::CustomDistribution*>(atoi(it5.key().c_str()), temp_dist));
                                 }
-                                RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(dest_dist);
-                                core->set_destination_dist(dist);
+                                markov->set_state(dest_markov);
+                                core->set_destination_dist(markov);
                             }
                             else if(it4.key() == "request_packet"){
                                 std::map<int, RandomGenerator::CustomDistribution*>packet_dist;
@@ -231,6 +233,14 @@ void Traffic_Model::read_model_file() {
                         }
                         spatial_locality->add_core_instance(core);
                     }
+                }
+                else if(it2.key() == "reply_window"){
+                    std::map<int, int>reply_window;
+                    for(json::iterator it3 = it2->begin(); it3 != it2->end(); ++it3){
+                        reply_window.insert(std::pair<int, int>(atoi(it3.key().c_str()), atoi(it3.value().dump().c_str())));
+                    }
+                    RandomGenerator::CustomDistribution *dist = new RandomGenerator::CustomDistribution(reply_window);
+                    this->spatial_locality->set_reply_window(dist);
                 }
             }
         }

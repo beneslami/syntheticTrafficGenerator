@@ -2,18 +2,23 @@
 // Created by ben on 3/30/24.
 //
 
-#ifndef B_OOKSIM2_TRAFFC_MODEL_H
-#define B_OOKSIM2_TRAFFC_MODEL_H
+#ifndef B_OOKSIM2_TRAFFIC_MODEL_H
+#define B_OOKSIM2_TRAFFIC_MODEL_H
 
 #include "../RandomGenerator.h"
+#include "../trafficmanager.hpp"
 #include "Temporal_Locality.h"
 #include "Spatial_Locality.h"
 #include <fstream>
-#include <string>
+#include <vector>
+#include <map>
 #include <queue>
+#include <string>
+
 
 class Traffic_Model {
 private:
+    int history;
     int cycle;
     int byte_granularity;
     std::string traffic_model_path;
@@ -23,7 +28,7 @@ private:
     class Spatial_Locality *spatial_locality;
 public:
     std::ofstream outTrace;
-    Traffic_Model(std::string, std::string);
+    Traffic_Model(std::string, std::string, int);
     ~Traffic_Model();
     void read_model_file();
     int generate_off_cycle(std::string);
@@ -39,4 +44,4 @@ public:
     int get_byte_granularity();
 };
 
-#endif //B_OOKSIM2_TRAFFC_MODEL_H
+#endif

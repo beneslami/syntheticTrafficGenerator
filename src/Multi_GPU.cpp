@@ -618,7 +618,7 @@ void Multi_GPU::run(){
         int clock_mask = next_clock_domain();
 
         if(clock_mask & ICNT_chLet){
-            /*for(int chip = 0; chip < this->nodes; ++chip){
+            for(int chip = 0; chip < this->nodes; ++chip){
                 int subnetId = this->chLet_c[chip] % 2;
                 mem_fetch *mf = icnt_pop(subnetId, chip);
                 if(mf) {
@@ -672,7 +672,7 @@ void Multi_GPU::run(){
                         }
                     }
                 }
-            }*/
+            }
         }
 
         if(clock_mask & CORE){
@@ -684,7 +684,7 @@ void Multi_GPU::run(){
         }
 
         if(clock_mask & ICNT_chLet){
-            /*int window = trafficModel->get_spatial_locality()->generate_reply_window();
+            int window = trafficModel->get_spatial_locality()->generate_reply_window();
             for(int i = 0; i < window; ++i){
                 int chip = i  % 4;
                 if (!pending_reply_isEmpty(chip)) {
@@ -700,7 +700,7 @@ void Multi_GPU::run(){
                         }
                     }
                 }
-            }*/
+            }
         }
 
         if(clock_mask & DRAM){
@@ -709,11 +709,11 @@ void Multi_GPU::run(){
 
         if(clock_mask & L2){
             // pop remote request from the queue
-            /*int window = 128;
+            int window = 128;
             for(int i = 0; i < window; ++i){
                 int chip = i % 4;
                 processing_queue_pop(chip);
-            }*/
+            }
         }
 
         if(clock_mask & ICNT){
@@ -721,7 +721,7 @@ void Multi_GPU::run(){
         }
 
         if(clock_mask & ICNT_chLet){
-            //trafficManager->_Step();
+            trafficManager->_Step();
         }
 
         if(clock_mask & CORE){
@@ -734,14 +734,59 @@ void Multi_GPU::run(){
                     on_state = 1;
                 }
                 if(on_state == 1) {
-                    int window = trafficModel->get_spatial_locality()->generate_request_window();
-
-                    int src = trafficModel->get_spatial_locality()->generate_source();
-                    int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
-                    int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
-                    trafficModel->outTrace << "request injected\tsrc: " << src << "\tdst: " << dst <<
-                    "\tcycle:" << this->gpu_cycle << "\tsize: " << byte_val << std::endl;
-
+                    assert(this->gpu_cycle >= begin_on_cycle);
+                    //int byte = this->byteArray[this->gpu_cycle - begin_on_cycle];
+                    //int empty = 0;
+                    /*while (byte != 0) {
+                        for (int i = 0; i < this->nodes; ++i) {
+                            mem_fetch *mf = this->waiting_queue[i].front();
+                            if(mf != NULL) {
+                                int src = mf->src;
+                                int dst = mf->dest;
+                                int byte_val = mf->size;
+                                if (byte - byte_val >= 0) {
+                                    if (trafficManager->has_buffer(0, src, byte_val)) {
+                                        this->icnt_push(src, dst, mf);
+                                        trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: "
+                                               << mf->dest << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
+                                               << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size << "\tq: "
+                                               << trafficManager->get_partial_packet_occupancy(0, mf->src, 0) << std::endl;
+                                        byte -= byte_val;
+                                        this->waiting_queue[i].pop();
+                                    }
+                                }
+                            }
+                            else{
+                                ++empty;
+                            }
+                        }
+                        if(empty == this->nodes){
+                            break;
+                        }
+                    }*/
+                    //while(byte != 0) {
+                        //spatial locality stuff is here
+                        int window = trafficModel->get_spatial_locality()->generate_request_window();
+                        for(int i = 0; i < window; ++i) {
+                            int src = trafficModel->get_spatial_locality()->generate_source();
+                            int dst = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_destination();
+                            int byte_val = trafficModel->get_spatial_locality()->get_core_instance(src)->generate_request_packet_type(dst);
+                            //if (byte - byte_val >= 0) {
+                            mem_fetch *mf = this->generate_packet(src, dst, byte_val, 0);
+                            if (trafficManager->has_buffer(0, src, byte_val)) {
+                                this->icnt_push(src, dst, mf);
+                                trafficModel->outTrace << "request injected\tsrc: " << mf->src << "\tdst: " << mf->dest
+                                   << "\tID: " << mf->id << "\ttype: " << mf->type << "\tcycle: "
+                                   << gpu_cycle << "\tchip: " << src << "\tsize: " << mf->size << "\tq: "
+                                   << trafficManager->get_partial_packet_occupancy(0, mf->src, 0) << std::endl;
+                            }
+                        }
+                            //else{
+                                //this->waiting_queue[src].push(mf);
+                            //}
+                            //byte -= byte_val;
+                        //}
+                    //}
                 }
                 if(this->gpu_cycle - begin_on_cycle == this->burst_duration - 1){
                     on_state = 0;
